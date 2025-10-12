@@ -1,11 +1,11 @@
 import "server-only";
 
 import { genSaltSync, hashSync } from "bcrypt-ts";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { user, chat, User, reservation } from "./schema";
+import { user, chat, User, reservation, video, Video } from "./schema";
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
@@ -139,4 +139,165 @@ export async function updateReservation({
       hasCompletedPayment,
     })
     .where(eq(reservation.id, id));
+}
+
+// Video CRUD operations
+
+export async function saveVideo({
+  id,
+  uri,
+  downloadUri,
+  metadata,
+  format,
+  title,
+  description,
+  duration,
+  fileSize,
+  thumbnailUri,
+  status,
+  userId,
+}: {
+  id: string;
+  uri: string;
+  downloadUri?: string;
+  metadata?: any;
+  format?: string;
+  title?: string;
+  description?: string;
+  duration?: number;
+  fileSize?: number;
+  thumbnailUri?: string;
+  status?: string;
+  userId: string;
+}) {
+  try {
+    return await db.insert(video).values({
+      id,
+      uri,
+      downloadUri,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+      format,
+      title,
+      description,
+      duration,
+      fileSize,
+      thumbnailUri,
+      status: status || "processing",
+      userId,
+    });
+  } catch (error) {
+    console.error("Failed to save video in database");
+    throw error;
+  }
+}
+
+export async function getAllVideos() {
+  try {
+    return await db
+      .select()
+      .from(video)
+      .orderBy(desc(video.createdAt));
+  } catch (error) {
+    console.error("Failed to get all videos");
+    throw error;
+  }
+}
+
+export async function getVideos({ userId }: { userId: string }) {
+  try {
+    return await db
+      .select()
+      .from(video)
+      .where(eq(video.userId, userId))
+      .orderBy(desc(video.createdAt));
+  } catch (error) {
+    console.error("Failed to get videos by user");
+    throw error;
+  }
+}
+
+export async function getVideo({ id }: { id: string }) {
+  try {
+    const [selectedVideo] = await db.select().from(video).where(eq(video.id, id));
+    return selectedVideo;
+  } catch (error) {
+    console.error("Failed to get video by id from database");
+    throw error;
+  }
+}
+
+export async function updateVideo({
+  id,
+  uri,
+  downloadUri,
+  metadata,
+  format,
+  title,
+  description,
+  duration,
+  fileSize,
+  thumbnailUri,
+  status,
+}: {
+  id: string;
+  uri?: string;
+  downloadUri?: string;
+  metadata?: any;
+  format?: string;
+  title?: string;
+  description?: string;
+  duration?: number;
+  fileSize?: number;
+  thumbnailUri?: string;
+  status?: string;
+}) {
+  try {
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (uri !== undefined) updateData.uri = uri;
+    if (downloadUri !== undefined) updateData.downloadUri = downloadUri;
+    if (metadata !== undefined) updateData.metadata = JSON.stringify(metadata);
+    if (format !== undefined) updateData.format = format;
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (duration !== undefined) updateData.duration = duration;
+    if (fileSize !== undefined) updateData.fileSize = fileSize;
+    if (thumbnailUri !== undefined) updateData.thumbnailUri = thumbnailUri;
+    if (status !== undefined) updateData.status = status;
+
+    return await db.update(video).set(updateData).where(eq(video.id, id));
+  } catch (error) {
+    console.error("Failed to update video in database");
+    throw error;
+  }
+}
+
+export async function deleteVideo({ id }: { id: string }) {
+  try {
+    return await db.delete(video).where(eq(video.id, id));
+  } catch (error) {
+    console.error("Failed to delete video from database");
+    throw error;
+  }
+}
+
+export async function getVideosByStatus({ 
+  status, 
+  userId 
+}: { 
+  status: string; 
+  userId: string; 
+}) {
+  try {
+    return await db
+      .select()
+      .from(video)
+      .where(and(eq(video.status, status), eq(video.userId, userId)))
+      .orderBy(desc(video.createdAt));
+  } catch (error) {
+    console.error("Failed to get videos by status from database");
+    throw error;
+  }
 }

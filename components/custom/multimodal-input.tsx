@@ -19,18 +19,18 @@ import useWindowSize from "./use-window-size";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 
-const suggestedActions = [
-  {
-    title: "Help me book a flight",
-    label: "from San Francisco to London",
-    action: "Help me book a flight from San Francisco to London",
-  },
-  {
-    title: "What is the status",
-    label: "of flight BA142 flying tmrw?",
-    action: "What is the status of flight BA142 flying tmrw?",
-  },
-];
+// const suggestedActions = [
+//   {
+//     title: "Help me book a flight",
+//     label: "from San Francisco to London",
+//     action: "Help me book a flight from San Francisco to London",
+//   },
+//   {
+//     title: "What is the status",
+//     label: "of flight BA142 flying tmrw?",
+//     action: "What is the status of flight BA142 flying tmrw?",
+//   },
+// ];
 
 export function MultimodalInput({
   input,
@@ -52,14 +52,8 @@ export function MultimodalInput({
   messages: Array<Message>;
   append: (
     message: Message | CreateMessage,
-    chatRequestOptions?: ChatRequestOptions,
-  ) => Promise<string | null | undefined>;
-  handleSubmit: (
-    event?: {
-      preventDefault?: () => void;
-    },
-    chatRequestOptions?: ChatRequestOptions,
   ) => void;
+  handleSubmit: (e: React.FormEvent) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -85,10 +79,8 @@ export function MultimodalInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<Array<string>>([]);
 
-  const submitForm = useCallback(() => {
-    handleSubmit(undefined, {
-      experimental_attachments: attachments,
-    });
+  const submitForm = useCallback((event: React.FormEvent) => {
+    handleSubmit(event);
 
     setAttachments([]);
 
@@ -153,7 +145,7 @@ export function MultimodalInput({
 
   return (
     <div className="relative w-full flex flex-col gap-4">
-      {messages.length === 0 &&
+      {/* {messages.length === 0 &&
         attachments.length === 0 &&
         uploadQueue.length === 0 && (
           <div className="grid sm:grid-cols-2 gap-4 w-full md:px-0 mx-auto md:max-w-[500px]">
@@ -183,7 +175,7 @@ export function MultimodalInput({
               </motion.div>
             ))}
           </div>
-        )}
+        )} */}
 
       <input
         type="file"
@@ -216,10 +208,10 @@ export function MultimodalInput({
 
       <Textarea
         ref={textareaRef}
-        placeholder="Send a message..."
+        placeholder="Describe your video..."
         value={input}
         onChange={handleInput}
-        className="min-h-[24px] overflow-hidden resize-none rounded-lg text-base bg-muted border-none"
+        className="min-h-[24px] border overflow-hidden resize-none rounded-lg text-base bg-muted border-none"
         rows={3}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
@@ -228,7 +220,7 @@ export function MultimodalInput({
             if (isLoading) {
               toast.error("Please wait for the model to finish its response!");
             } else {
-              submitForm();
+              submitForm(event);
             }
           }
         }}
@@ -249,7 +241,7 @@ export function MultimodalInput({
           className="rounded-full p-1.5 h-fit absolute bottom-2 right-2 m-0.5 text-white"
           onClick={(event) => {
             event.preventDefault();
-            submitForm();
+            submitForm(event);
           }}
           disabled={input.length === 0 || uploadQueue.length > 0}
         >

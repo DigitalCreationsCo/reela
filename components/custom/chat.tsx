@@ -1,137 +1,312 @@
 "use client";
 
+import { Message as PreviewMessage } from "@/components/custom/message"
 import { Attachment, Message } from "ai";
-import { useChat } from "ai/react";
-import { useEffect, useState } from "react";
-import { Message as PreviewMessage } from "@/components/custom/message";
 import { useScrollToBottom } from "@/components/custom/use-scroll-to-bottom";
 import { MultimodalInput } from "./multimodal-input";
 import { Overview } from "./overview";
-import { File, GeneratedVideo } from "@google/genai";
-import { LoaderIcon } from "lucide-react";
+import { LoaderIcon, SaveIcon, LogInIcon, TrashIcon } from "lucide-react";
+import { VideoPlayer } from "../video/player";
+import { useRouter } from "next/navigation";
+import { Session } from "next-auth";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { VideoItem } from "@/lib/types";
+import { Button } from "../ui/button";
+import { Video } from "@/db/schema";
+import { File, Video as genAIVideo } from "@google/genai";
+import { VideoReel } from "../video/reel";
+
+type VideoGenerationStatus = 'idle' | 'initiating' | 'generating' | 'retrieving' | 'ready' | 'downloading' | 'complete' | 'error';
 
 export function Chat({
   id,
   initialMessages,
+  session,
 }: {
   id: string;
   initialMessages: Array<Message>;
+  session: Session | null;
 }) {
-  const { messages, handleSubmit, input, setInput, append, isLoading, stop } =
-    useChat({
-      id,
-      body: { id },
-      initialMessages,
-      maxSteps: 10,
-      onResponse: async (res) => {
-        setIsDownloading(true);
-        console.log('res: ', res);
-
-        const gv: File = await res.json();
-        console.log('video ', gv);
-
-        const fileId = gv.name!.replace('files/', '');
-        
-        const videoUrl = `/api/download/${fileId}?t=${Date.now()}`;
-        console.log('Setting video URL:', videoUrl);
-        setVideo(videoUrl);
-        setIsDownloading(false);
-
-        // window.history.replaceState({}, "", `/chat/${id}`);
-      },
-    });
-
-  const [video, setVideo] = useState<string>('');
+  const append =(message: any) => {
+    setMessages(prev => [...prev, message]);
+  };
+  const [messages, setMessages] = useState<any[]>([]);
+  const [input, setInput] = useState('');
+  const [videos, setVideos] = useState<Video[]>([]);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();
-  const [isDownloading, setIsDownloading] = useState(false);
   const [videoError, setVideoError] = useState<string>('');
 
+  const [generationStatus, setGenerationStatus] = useState<VideoGenerationStatus>('idle');
+  const [progress, setProgress] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const router = useRouter();
+
+  // Check if user has reached video limit
+  const hasReachedLimit = !session?.user && videos.length >= 1;
+
+  // const saveVideo = async () => {
+  //   if (!session?.user) return;
+    
+  //   setIsSaving(true);
+  //   try {
+  //     const response = await fetch('/api/videos', {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //       body: JSON.stringify({
+  //         videoUrl: video,
+  //         prompt: messages[messages.length - 1]?.content,
+  //         chatId: id,
+  //       }),
+  //     });
+
+  //     if (response.ok) {
+  //       setIsSaved(true);
+  //     } else {
+  //       console.error('Failed to save video');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error saving video:', error);
+  //   } finally {
+  //     setIsSaving(false);
+  //   }
+  // };
+
   useEffect(() => {
-    console.log('Video state changed:', video);
-  }, [video]);
+    console.log('Video state changed:');
+  }, [videos]);
   
+  const stop = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+    }
+    setIsGenerating(false);
+    setGenerationStatus('idle');
+    setProgress(0);
+    setVideoError('');
+  };
+
+  const handleVideoGeneration = async (prompt: string) => {
+    setIsGenerating(true);
+    setGenerationStatus('initiating');
+    setProgress(0);
+    setVideoError('');
+
+    const controller = new AbortController();
+    setAbortController(controller);
+
+    try {
+      const response = await fetch('/api/videos/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start video generation');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data: { 
+              status: VideoGenerationStatus;
+              progress: number;
+              video: File;
+              error?: any;
+            } = JSON.parse(line.slice(6));
+            
+            if (data.status) {
+              setGenerationStatus(data.status);
+            }
+            
+            if (data.progress !== undefined) {
+              setProgress(data.progress);
+            }
+
+            if (data.status === 'complete' && data.video) {
+              setGenerationStatus('downloading');
+              setProgress(95);
+
+              const {video: { uri, downloadUri, name, displayName, createTime }} = data;
+
+              const fileId = name!.replace('files/', '');
+
+
+              const newVideo = new Video({
+                uri: uri!,
+                fileId,
+                downloadUri,
+                prompt,
+                author: '',
+                userId: '',
+                createdAt: new Date(createTime!)
+              })
+
+              setVideos((prev) => [...prev, newVideo]);
+
+              setProgress(100);
+              setGenerationStatus('complete');
+              setIsGenerating(false);
+              setAbortController(null);
+            }
+
+            if (data.status === 'error') {
+              setVideoError(data.error || 'An error occurred');
+              setIsGenerating(false);
+              setAbortController(null); 
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Video generation aborted by user');
+        setVideoError('Video generation cancelled');
+      } else {
+        console.error('Error:', error);
+        setVideoError(error instanceof Error ? error.message : 'Unknown error');
+      }
+      setIsGenerating(false);
+      setGenerationStatus('error');
+      setAbortController(null);
+    }
+  };
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    console.log('customHandleSubmit event: ', e);
+
+    e?.preventDefault();
+    if (!input.trim()) return;
+
+    const prompt = input;
+    setInput('');
+    
+    append({
+      role: 'user',
+      content: prompt,
+    });
+
+    await handleVideoGeneration(prompt);
+  };
+
+  const getStatusMessage = () => {
+    switch (generationStatus) {
+      case 'initiating':
+        return 'Initiating video generation...';
+      case 'generating':
+        return 'Generating video...';
+      case 'retrieving':
+        return 'Retrieving video...';
+      case 'ready':
+        return 'Video ready, preparing download...';
+      case 'downloading':
+        return 'Downloading video...';
+      case 'complete':
+        return 'Complete!';
+      case 'error':
+        return 'Error occurred';
+      default:
+        return '';
+    }
+  };
+
   return (
-    <div className="flex flex-row justify-center pb-4 md:pb-8 h-dvh bg-background">
-      <div className="flex flex-col justify-between items-center gap-4">
-        <div
-          ref={messagesContainerRef}
-          className="flex flex-col gap-4 h-full w-dvw items-center overflow-y-scroll"
-        >
-          {messages.length === 0 && <Overview />}
-
-          {isLoading && (
-            <div className="flex items-center gap-2">
-              <LoaderIcon className="animate-spin" />
-              Generating...
-            </div>
-          )}
-          
-          {isDownloading && (
-            <div className="flex items-center gap-2">
-              <LoaderIcon className="animate-spin" />
-              Downloading...
-            </div>
-          )}
-
-          {messages.map((message) => (
-            <PreviewMessage
-              key={message.id}
-              chatId={id}
-              role={message.role}
-              content={message.content}
-              attachments={message.experimental_attachments}
-              toolInvocations={message.toolInvocations}
-            />
-          ))}
-
-          <div
-            ref={messagesEndRef}
-            className="shrink-0 min-w-[24px] min-h-[24px]"
-          />
-        </div>
-
-        {video && (
-          <div>
-            <video
-              key={video} // Force remount when URL changes
-              src={video}
-              width={300}
-              height={200}
-              controls
-              autoPlay
-              preload="auto"
-              style={{ marginTop: 24, borderRadius: 8, boxShadow: "0 2px 16px #0002" }}
-              onLoadedMetadata={() => console.log('Video metadata loaded')}
-              onLoadedData={() => console.log('Video data loaded')}
-              onError={(e) => {
-                console.error('Video error:', e);
-                const videoElement = e.currentTarget;
-                setVideoError(`Error loading video: ${videoElement.error?.message || 'Unknown error'}`);
-              }}
-              onCanPlay={() => console.log('Video can play')}
-            >
-              Your browser does not support the video tag.
-            </video>
-            {videoError && (
-              <div className="text-red-500 text-sm mt-2">{videoError}</div>
-            )}
+    <div className="flex flex-col justify-center p-4 md:p-8 min-h-[88vh] bg-background">
+      <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
+        
+        {!videos.length && !isGenerating && !messages.length && (
+          <div className="flex-1 flex items-center justify-center min-h-200">
+            <Overview />
           </div>
         )}
 
-        <form className="flex flex-row gap-2 relative items-end w-full md:max-w-[500px] max-w-[calc(100dvw-32px) px-4 md:px-0">
-          <MultimodalInput
-            input={input}
-            setInput={setInput}
-            handleSubmit={handleSubmit}
-            isLoading={isLoading}
-            stop={stop}
-            attachments={attachments}
-            setAttachments={setAttachments}
-            messages={messages}
-            append={append}
-          />
-        </form>
+        {isGenerating && (
+          <div className="flex-1 flex items-center justify-center min-h-200">
+            <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg min-w-[300px]">
+              <div className="flex items-center gap-2">
+                <LoaderIcon className="animate-spin" size={20} />
+                <span className="text-sm font-medium">{getStatusMessage()}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <span className="text-xs text-muted-foreground">{progress}%</span>
+            </div>
+          </div>
+        )}
+
+        <VideoReel videos={videos} session={session} />
+
+        {messages.length > 0 && !videos.length && !isGenerating && (
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 flex flex-col gap-4 overflow-y-auto px-4 py-2"
+          >
+            {messages.map((message) => (
+              <PreviewMessage
+                key={message.id}
+                chatId={id}
+                role={message.role}
+                content={message.content}
+                attachments={message.experimental_attachments}
+                toolInvocations={message.toolInvocations}
+              />
+            ))}
+            <div
+              ref={messagesEndRef}
+              className="shrink-0 min-h-[24px]"
+            />
+          </div>
+        )}
+
+        <div className="p-4">
+          <form 
+            onSubmit={handleSubmit}
+            className="flex flex-row gap-2 relative items-end w-full max-w-2xl mx-auto"
+          >
+            <MultimodalInput
+              input={input}
+              setInput={setInput}
+              handleSubmit={handleSubmit}
+              isLoading={isGenerating}
+              stop={stop}
+              attachments={attachments}
+              setAttachments={setAttachments}
+              messages={messages}
+              append={append}
+            />
+          </form>
+        </div>
       </div>
     </div>
   );

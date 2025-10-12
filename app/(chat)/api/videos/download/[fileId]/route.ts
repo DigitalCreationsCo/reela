@@ -34,6 +34,8 @@ export async function GET(
     
     // Check what we're actually getting
     const arrayBuffer = await response.arrayBuffer();
+    console.log('arrayBuffer: ', arrayBuffer);
+    
     const text = new TextDecoder().decode(arrayBuffer.slice(0, 500)); // First 500 bytes as text
     
     console.log('Video size:', arrayBuffer.byteLength, 'bytes');

@@ -19,7 +19,7 @@ export default async function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className="dark antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
