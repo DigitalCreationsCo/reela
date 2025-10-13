@@ -206,25 +206,25 @@ export function MultimodalInput({
         </div>
       )}
 
-      <Textarea
-        ref={textareaRef}
-        placeholder="Describe your video..."
-        value={input}
-        onChange={handleInput}
-        className="min-h-[24px] border overflow-hidden resize-none rounded-lg text-base bg-muted border-none"
-        rows={3}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
+        <Textarea
+          ref={textareaRef}
+          placeholder="Describe your clip. The more detail, the better!"
+          value={input}
+          onChange={handleInput}
+          className="min-h-[24px] border-0 overflow-hidden resize-none rounded-lg text-base bg-gradient-to-br from-zinc-100 via-zinc-50 to-zinc-200 dark:from-zinc-900 dark:via-zinc-800 dark:to-zinc-700"
+          rows={3}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
 
-            if (isLoading) {
-              toast.error("Please wait for the model to finish its response!");
-            } else {
-              submitForm(event);
+              if (isLoading) {
+                toast.error("Please wait for the model to finish its response!");
+              } else {
+                submitForm(event);
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
 
       {isLoading ? (
         <Button
@@ -249,7 +249,7 @@ export function MultimodalInput({
         </Button>
       )}
 
-      <Button
+      {/* <Button
         className="rounded-full p-1.5 h-fit absolute bottom-2 right-10 m-0.5 dark:border-zinc-700"
         onClick={(event) => {
           event.preventDefault();
@@ -259,7 +259,7 @@ export function MultimodalInput({
         disabled={isLoading}
       >
         <PaperclipIcon size={14} />
-      </Button>
+      </Button> */}
     </div>
   );
 }

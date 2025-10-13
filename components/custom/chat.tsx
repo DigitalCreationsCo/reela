@@ -5,15 +5,11 @@ import { Attachment, Message } from "ai";
 import { useScrollToBottom } from "@/components/custom/use-scroll-to-bottom";
 import { MultimodalInput } from "./multimodal-input";
 import { Overview } from "./overview";
-import { LoaderIcon, SaveIcon, LogInIcon, TrashIcon } from "lucide-react";
-import { VideoPlayer } from "../video/player";
-import { useRouter } from "next/navigation";
+import { LoaderIcon } from "lucide-react";
 import { Session } from "next-auth";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { VideoItem } from "@/lib/types";
-import { Button } from "../ui/button";
-import { video, Video } from "@/db/schema";
-import { File, Video as genAIVideo } from "@google/genai";
+import { useEffect, useState } from "react";
+import { Video } from "@/db/schema";
+import { File } from "@google/genai";
 import { VideoReel } from "../video/reel";
 import { SAMPLE_VIDEOS } from "@/lib/sample_videos";
 
@@ -42,9 +38,6 @@ export function Chat({
   const [progress, setProgress] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
-  const router = useRouter();
 
   // Check if user has reached video limit
   const hasReachedLimit = !session?.user && videos.length >= 1;

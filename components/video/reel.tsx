@@ -27,6 +27,9 @@ interface VideoReelProps {
     const containerRef = useRef<HTMLDivElement>(null);
     const [visibleVideos, setVisibleVideos] = useState<Set<number>>(new Set([0]));
     const [savingVideos, setSavingVideos] = useState<Set<string>>(new Set());
+    const [isSaving, setIsSaving] = useState(false);
+    const [isSaved, setIsSaved] = useState(false);
+
     const observerRef = useRef<IntersectionObserver | null>(null);
     const prevVideoCountRef = useRef(0); // Track previous video count
   
@@ -192,6 +195,52 @@ interface VideoReelProps {
                       </div>
                     </div>
                   )}
+      
+                  {/* Save/Login Section */}
+                  <div className="flex flex-col items-center gap-3">
+                    {!session?.user && (
+                      <div className="flex flex-col items-center gap-2 p-4 bg-secondary/50 rounded-lg border">
+                        <p className="text-sm text-muted-foreground text-center">
+                        Log in to save your generated videos
+                        </p>
+                        <Button 
+                        // onClick={handleLogin}
+                        variant="default" 
+                        size="sm"
+                        className="flex items-center gap-2"
+                        >
+                        <LogInIcon size={16} />
+                        Log In to Save
+                        </Button>
+                      </div>
+                      )}
+              
+                    {/* {session?.user && 
+                    <div className="flex items-center gap-2">
+                      {!isSaved ? (
+                      <Button 
+                          onClick={saveVideo}
+                          disabled={isSaving}
+                          variant="default" 
+                          size="sm"
+                          className="flex items-center gap-2"
+                      >
+                          {isSaving ? (
+                          <LoaderIcon className="animate-spin" size={16} />
+                          ) : (
+                          <SaveIcon size={16} />
+                          )}
+                          {isSaving ? 'Saving...' : 'Save Video'}
+                      </Button>
+                      ) : (
+                      <div className="flex items-center gap-2 text-green-600">
+                          <SaveIcon size={16} />
+                          <span className="text-sm font-medium">Video Saved!</span>
+                      </div>
+                      )}
+                    </div>
+                    } */}
+                  </div>
                 </div>
               );
             })}
@@ -226,71 +275,3 @@ interface VideoReelProps {
     display: none;
   }
   `;
-
-//   {videos && !isGenerating && (
-//     <div className="flex-1 flex flex-col items-center justify-center gap-4 p-4">
-//     <VideoPlayer 
-//         video={video} 
-//         videoError={videoError} 
-//         setVideoError={setVideoError}
-//     />
-    
-//     {/* Save/Login Section */}
-//     <div className="flex flex-col items-center gap-3">
-//         {!session?.user && (
-//         <div className="flex flex-col items-center gap-2 p-4 bg-secondary/50 rounded-lg border">
-//             <p className="text-sm text-muted-foreground text-center">
-//             Log in to save your generated videos
-//             </p>
-//             <Button 
-//             // onClick={handleLogin}
-//             variant="default" 
-//             size="sm"
-//             className="flex items-center gap-2"
-//             >
-//             <LogInIcon size={16} />
-//             Log In to Save
-//             </Button>
-//         </div>
-//         )}
-
-//         {session?.user && (
-//         <div className="flex items-center gap-2">
-//             {!isSaved ? (
-//             <Button 
-//                 onClick={saveVideo}
-//                 disabled={isSaving}
-//                 variant="default" 
-//                 size="sm"
-//                 className="flex items-center gap-2"
-//             >
-//                 {isSaving ? (
-//                 <LoaderIcon className="animate-spin" size={16} />
-//                 ) : (
-//                 <SaveIcon size={16} />
-//                 )}
-//                 {isSaving ? 'Saving...' : 'Save Video'}
-//             </Button>
-//             ) : (
-//             <div className="flex items-center gap-2 text-green-600">
-//                 <SaveIcon size={16} />
-//                 <span className="text-sm font-medium">Video Saved!</span>
-//             </div>
-//             )}
-//         </div>
-//         )}
-//     </div>
-
-//     <VideoReel videos={videos} />
-
-    
-//     {messages.length > 0 && (
-//         <div className="max-w-2xl w-full">
-//         <div className="bg-secondary/50 rounded-lg p-4 border">
-//             <h3 className="text-sm font-medium text-muted-foreground mb-2">Video Description</h3>
-//             <p className="text-sm">{messages[messages.length - 1]?.content}</p>
-//         </div>
-//         </div>
-//     )}
-//     </div>
-// )}
