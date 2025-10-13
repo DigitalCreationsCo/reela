@@ -53,6 +53,7 @@ export const video = pgTable("Video", {
   uri: text("uri").notNull(),
   downloadUri: text("downloadUri"),
   metadata: json("metadata"),
+  genre: varchar("genre", { length: 64 }), 
   format: varchar("format", { length: 32 }),
   title: varchar("title", { length: 255 }),
   prompt: varchar("title", { length: 1200 }),
@@ -61,7 +62,7 @@ export const video = pgTable("Video", {
   fileSize: integer("fileSize"),
   views: integer("views"),
   thumbnailUri: text("thumbnailUri"),
-  status: varchar("status", { length: 32 }).notNull().default("processing"), // processing, ready, failed
+  status: varchar("status", { length: 32 }).notNull().default("processing"), 
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   userId: uuid("userId")
@@ -88,7 +89,8 @@ export class Video implements InferSelectModel<typeof video> {
   userId: string;
   views: number;
   thumbnailUri: string;
-  status: string;
+  status: "processing" | "ready" | "failed";
+  genre: (typeof genres)[number];
   createdAt: Date;
   updatedAt: Date;
 
@@ -109,6 +111,7 @@ export class Video implements InferSelectModel<typeof video> {
     views = 0,
     thumbnailUri = "",
     status = "processing",
+    genre,
     createdAt = new Date(),
     updatedAt = new Date(),
   }: Partial<Video> & { uri: string; fileId: string; prompt: string; author: string; userId: string }) {
@@ -128,7 +131,12 @@ export class Video implements InferSelectModel<typeof video> {
     this.views = views;
     this.thumbnailUri = thumbnailUri;
     this.status = status;
+    this.genre = genre!;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
   }
 }
+
+export const genres = [
+  "action", "romance", "cartoon", "anime", "education", "scifi", "portrait", "animals", "music", "comedy"
+]

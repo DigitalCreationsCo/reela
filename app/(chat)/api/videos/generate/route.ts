@@ -144,7 +144,7 @@ export async function POST(request: Request) {
           );
 
           currentOperation = await ai.models.generateVideos({
-            model: 'veo-2.0-generate-001',
+            model: 'veo-3.0-fast-generate-001',
             source: {
               prompt: messages[0].content,
             },
@@ -216,7 +216,8 @@ export async function POST(request: Request) {
             }
             
             pollCount++;
-            const progress = Math.min(10 + (pollCount / maxPolls) * 70, 80);
+            // Make progress increments bigger (faster progression)
+            const progress = Math.min(10 + (pollCount / maxPolls) * 120, 80);
             
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ 

@@ -7,6 +7,7 @@ import { Session } from "next-auth";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Video } from "@/db/schema";
+import { VideoInfo } from "./info";
 
 interface VideoReelProps {
     videos: Video[];
@@ -24,27 +25,33 @@ interface VideoReelProps {
     className = "" 
   }: VideoReelProps) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [visibleVideos, setVisibleVideos] = useState<Set<number>>(new Set());
+    const [visibleVideos, setVisibleVideos] = useState<Set<number>>(new Set([0]));
     const [savingVideos, setSavingVideos] = useState<Set<string>>(new Set());
     const observerRef = useRef<IntersectionObserver | null>(null);
+    const prevVideoCountRef = useRef(0); // Track previous video count
   
     useEffect(() => {
       if (!containerRef.current) return;
   
       observerRef.current = new IntersectionObserver(
         (entries) => {
-          const newVisibleVideos = new Set(visibleVideos);
-          
-          entries.forEach((entry) => {
-            const index = parseInt(entry.target.getAttribute('data-index') || '0');
-            if (entry.isIntersecting) {
-              newVisibleVideos.add(index);
-            } else {
-              newVisibleVideos.delete(index);
-            }
+          setVisibleVideos((prev) => {
+            const newVisibleVideos = new Set(prev);
+            
+            entries.forEach((entry) => {
+              const index = parseInt(entry.target.getAttribute('data-index') || '0');
+              if (entry.isIntersecting) {
+                newVisibleVideos.add(index);
+                console.log('VideoReel - Video became visible:', index);
+              } else {
+                newVisibleVideos.delete(index);
+                console.log('VideoReel - Video became hidden:', index);
+              }
+            });
+            
+            console.log('VideoReel - Visible videos:', Array.from(newVisibleVideos));
+            return newVisibleVideos;
           });
-          
-          setVisibleVideos(newVisibleVideos);
         },
         {
           root: containerRef.current,
@@ -60,10 +67,14 @@ interface VideoReelProps {
       };
     }, []);
   
+    // Observe video elements when videos array changes
     useEffect(() => {
       if (!observerRef.current) return;
   
       const videoElements = containerRef.current?.querySelectorAll('[data-video-item]');
+      
+      console.log('VideoReel - Observing elements:', videoElements?.length);
+      
       videoElements?.forEach((element) => {
         observerRef.current?.observe(element);
       });
@@ -73,6 +84,40 @@ interface VideoReelProps {
           observerRef.current?.unobserve(element);
         });
       };
+    }, [videos]);
+  
+    // Auto-scroll to and show newly added videos
+    useEffect(() => {
+      if (videos.length > prevVideoCountRef.current) {
+        const newVideoIndex = videos.length - 1;
+        console.log('VideoReel - New video added at index:', newVideoIndex);
+        
+        // Mark the new video as visible immediately
+        setVisibleVideos((prev) => {
+          const updated = new Set(prev);
+          updated.add(newVideoIndex);
+          console.log('VideoReel - Marking new video as visible:', newVideoIndex);
+          return updated;
+        });
+  
+        // Scroll to the new video
+        setTimeout(() => {
+          const videoElement = containerRef.current?.querySelector(
+            `[data-index="${newVideoIndex}"]`
+          );
+          if (videoElement) {
+            videoElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            console.log('VideoReel - Scrolled to new video');
+          }
+        }, 100);
+      }
+      
+      prevVideoCountRef.current = videos.length;
+    }, [videos]);
+  
+    // Debug: Log when videos change
+    useEffect(() => {
+      console.log('VideoReel - Videos updated:', videos.length, videos);
     }, [videos]);
   
     const handleSaveVideo = useCallback(async (videoId: string, videoUrl: string, prompt: string) => {
@@ -103,6 +148,8 @@ interface VideoReelProps {
       return null;
     }
   
+    console.log('VideoReel - Rendering with videos:', videos.length);
+  
     return (
       <div className={`relative ${className}`}>
         <div 
@@ -114,96 +161,43 @@ interface VideoReelProps {
           }}
         >
           <div className="space-y-4 p-4">
-            {videos.map((video, index) => (
-              <div
-                key={video.id}
-                data-index={index}
-                data-video-item
-                className="relative min-h-[60vh] flex flex-col items-center justify-center bg-secondary/20 rounded-lg border"
-                style={{ scrollSnapAlign: 'start' }}
-              >
-            
-                {/* Video Player - Only render if visible for performance */}
-                {visibleVideos.has(index) ? (
-                  <div className="w-full max-w-2xl mx-auto p-4">
-                    <VideoPlayer 
-                      video={video}
-                      videoError=""
-                      setVideoError={() => {}}
-                    />
-                    
-                    {/* Video Info and Actions */}
-                    <div className="mt-4 space-y-3">
-                      {/* Prompt Display */}
-                      <div className="bg-secondary/50 rounded-lg p-3 border">
-                        <h3 className="text-sm font-medium text-muted-foreground mb-1">
-                          Video Description
-                        </h3>
-                        <p className="text-sm">{video.prompt}</p>
-                      </div>
-                      
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(video.createdAt).toLocaleString()}
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                            {/* Save Button (only for logged in users and unsaved videos) */}
-                            {/* {session?.user && (
-                                <Button
-                                onClick={() => handleSaveVideo(video.id, video.uri, video.prompt)}
-                                disabled={savingVideos.has(video.id)}
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center gap-2"
-                                >
-                                {savingVideos.has(video.id) ? (
-                                    <LoaderIcon className="animate-spin" size={14} />
-                                ) : (
-                                    <SaveIcon size={14} />
-                                )}
-                                {savingVideos.has(video.id) ? 'Saving...' : 'Save'}
-                                </Button>
-                            )} */}
-                            
-                            {/* Saved Indicator */}
-                            {/* {video.saved && (
-                                <div className="flex items-center gap-1 text-green-600 text-sm">
-                                <SaveIcon size={14} />
-                                <span>Saved</span>
-                                </div>
-                            )} */}
-                            
-                            {/* Delete Button */}
-                            {session?.user && (
-                                <Button
-                                    onClick={() => handleDeleteVideo(video.id)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex items-center gap-2 text-red-600 hover:text-red-700"
-                                >
-                                    <TrashIcon size={14} />
-                                    Delete
-                                </Button>
-                            )}
-                        </div>
+            {videos.map((video, index) => {
+              const isVisible = visibleVideos.has(index);
+              console.log(`VideoReel - Rendering video ${index}, visible:`, isVisible, 'video:', video);
+
+              return (
+                <div
+                  key={video.id}
+                  data-index={index}
+                  data-video-item
+                  className="relative min-h-[60vh] flex flex-col items-center justify-center"
+                  style={{ scrollSnapAlign: 'start' }}
+                >
+                  {/* Video Player - Only render if visible for performance */}
+                  {isVisible ? (
+                    <div className="w-full max-w-2xl mx-auto p-4">
+                      <VideoPlayer 
+                        video={video}
+                        videoError=""
+                        setVideoError={() => {}}
+                      />
+                      <VideoInfo video={video} session={session} />
+
+                    </div>
+                  ) : (
+                    // Placeholder for non-visible videos to maintain scroll position
+                    <div className="w-full max-w-2xl mx-auto p-4 h-[400px] flex items-center justify-center">
+                      <div className="animate-pulse bg-secondary/30 rounded-lg w-full h-full flex items-center justify-center">
+                        <span className="text-muted-foreground">Loading video...</span>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  /* Placeholder for non-visible videos to maintain scroll position */
-                  <div className="w-full max-w-2xl mx-auto p-4 h-[400px] flex items-center justify-center">
-                    <div className="animate-pulse bg-secondary/30 rounded-lg w-full h-full flex items-center justify-center">
-                      <span className="text-muted-foreground">Loading video...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-        
+
         {/* Scroll Indicator */}
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-1">
           {videos.map((_, index) => (
@@ -214,12 +208,12 @@ interface VideoReelProps {
                   ? 'bg-primary' 
                   : 'bg-secondary'
               }`}
-            />
+            ></div>
           ))}
         </div>
       </div>
-    );
-  }
+    )
+  };
   
   // Custom CSS for hiding scrollbar (add to globals.css)
   export const scrollbarHideStyles = `

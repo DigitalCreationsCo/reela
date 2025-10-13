@@ -12,9 +12,10 @@ import { Session } from "next-auth";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { VideoItem } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Video } from "@/db/schema";
+import { video, Video } from "@/db/schema";
 import { File, Video as genAIVideo } from "@google/genai";
 import { VideoReel } from "../video/reel";
+import { SAMPLE_VIDEOS } from "@/lib/sample_videos";
 
 type VideoGenerationStatus = 'idle' | 'initiating' | 'generating' | 'retrieving' | 'ready' | 'downloading' | 'complete' | 'error';
 
@@ -32,7 +33,7 @@ export function Chat({
   };
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
-  const [videos, setVideos] = useState<Video[]>([]);
+  const [videos, setVideos] = useState<Video[]>(SAMPLE_VIDEOS);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();
   const [videoError, setVideoError] = useState<string>('');
@@ -78,7 +79,8 @@ export function Chat({
   // };
 
   useEffect(() => {
-    console.log('Video state changed:');
+    console.log('Video state changed:',);
+    console.log('video ', videos[videos.length -1]);
   }, [videos]);
   
   const stop = () => {
@@ -154,22 +156,33 @@ export function Chat({
               setGenerationStatus('downloading');
               setProgress(95);
 
-              const {video: { uri, downloadUri, name, displayName, createTime }} = data;
+              const { uri, downloadUri, name, displayName, createTime, sizeBytes } = data.video;
+              console.log('Chat - Received video data:', { uri, downloadUri, name, createTime });
 
               const fileId = name!.replace('files/', '');
-
+              console.log('Chat - Extracted fileId:', fileId);
 
               const newVideo = new Video({
                 uri: uri!,
                 fileId,
-                downloadUri,
+                downloadUri: downloadUri || null,
                 prompt,
-                author: '',
-                userId: '',
+                author: session?.user?.name || 'Anonymous',
+                userId: session?.user?.id || 'anonymous', 
+                format: 'mp4',
+                fileSize: Number(sizeBytes),
+                status: 'ready',
                 createdAt: new Date(createTime!)
               })
 
-              setVideos((prev) => [...prev, newVideo]);
+              console.log('Chat - Created new Video object:', newVideo);
+              console.log('Chat - newVideo.fileId:', newVideo.fileId);
+
+              setVideos((prev) => {
+                const updated = [...prev, newVideo];
+                console.log('Chat - Updated videos array:', updated);
+                return updated;
+              });
 
               setProgress(100);
               setGenerationStatus('complete');
@@ -247,6 +260,8 @@ export function Chat({
           </div>
         )}
 
+        <VideoReel videos={videos} session={session} />
+
         {isGenerating && (
           <div className="flex-1 flex items-center justify-center min-h-200">
             <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg min-w-[300px]">
@@ -264,8 +279,6 @@ export function Chat({
             </div>
           </div>
         )}
-
-        <VideoReel videos={videos} session={session} />
 
         {messages.length > 0 && !videos.length && !isGenerating && (
           <div
