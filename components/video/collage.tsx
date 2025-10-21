@@ -192,7 +192,7 @@ const VideoItem: React.FC<{
         {/* Play button overlay */}
         {!autoPlay && (
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+            <div className="w-16 h-16 bg-background/20 rounded-full flex items-center justify-center backdrop-blur-sm">
               <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -205,7 +205,7 @@ const VideoItem: React.FC<{
           <div className="absolute bottom-4 left-4 right-4">
             <div className="flex items-center space-x-2">
               <button
-                className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-white/30 transition-colors"
+                className="w-8 h-8 bg-background/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-background/30 transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (videoRef.current) {

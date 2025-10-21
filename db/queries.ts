@@ -5,7 +5,7 @@ import { desc, eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { user, chat, User, reservation, video, Video } from "./schema";
+import { user, chat, User, reservation, video, Video, genres } from "./schema";
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
@@ -22,12 +22,11 @@ export async function getUser(email: string): Promise<Array<User>> {
   }
 }
 
-export async function createUser(email: string, password: string) {
+export async function createUser(newUser: typeof user.$inferInsert) {
   let salt = genSaltSync(10);
-  let hash = hashSync(password, salt);
-
+  let hash = hashSync(newUser.password!, salt);
   try {
-    return await db.insert(user).values({ email, password: hash });
+    return await db.insert(user).values({ ...user, password: hash } as unknown as typeof user.$inferInsert);
   } catch (error) {
     console.error("Failed to create user in database");
     throw error;
@@ -143,52 +142,38 @@ export async function updateReservation({
 
 // Video CRUD operations
 
-export async function saveVideo({
-  id,
-  uri,
-  downloadUri,
-  metadata,
-  format,
-  title,
-  description,
-  duration,
-  fileSize,
-  thumbnailUri,
-  status,
-  userId,
-}: {
-  id: string;
+export async function saveVideo(videoData: {
   uri: string;
-  downloadUri?: string;
-  metadata?: any;
-  format?: string;
+  fileId: string;
+  prompt: string;
+  userId: string;
+  genre?: (typeof genres)[number];
   title?: string;
   description?: string;
+  format?: string;
   duration?: number;
   fileSize?: number;
   thumbnailUri?: string;
-  status?: string;
-  userId: string;
+  status?: "processing" | "ready" | "failed";
 }) {
-  try {
-    return await db.insert(video).values({
-      id,
-      uri,
-      downloadUri,
-      metadata: metadata ? JSON.stringify(metadata) : null,
-      format,
-      title,
-      description,
-      duration,
-      fileSize,
-      thumbnailUri,
-      status: status || "processing",
-      userId,
-    });
-  } catch (error) {
-    console.error("Failed to save video in database");
-    throw error;
+  const userData = await db.select({ username: user.username })
+    .from(user)
+    .where(eq(user.id, videoData.userId))
+    .limit(1);
+  
+  if (!userData.length) {
+    throw new Error(`User with id ${videoData.userId} not found`);
   }
+  
+  const username = userData[0].username;
+  
+  const newVideo = new Video({
+    ...videoData,
+    author: username,
+  });
+  
+  const result = await db.insert(video).values(newVideo).returning();
+  return result[0];
 }
 
 export async function getAllVideos() {

@@ -5,13 +5,12 @@ import { Attachment, Message } from "ai";
 import { useScrollToBottom } from "@/components/custom/use-scroll-to-bottom";
 import { MultimodalInput } from "./multimodal-input";
 import { Overview } from "./overview";
-import { LoaderIcon } from "lucide-react";
 import { Session } from "next-auth";
 import { useEffect, useState } from "react";
 import { Video } from "@/db/schema";
 import { File } from "@google/genai";
 import { VideoReel } from "../video/reel";
-import { SAMPLE_VIDEOS } from "@/lib/sample_videos";
+import { SAMPLE_VIDEOS } from "@/lib/sample/sample_videos";
 
 type VideoGenerationStatus = 'idle' | 'initiating' | 'generating' | 'retrieving' | 'ready' | 'downloading' | 'complete' | 'error';
 
@@ -222,58 +221,26 @@ export function Chat({
     await handleVideoGeneration(prompt);
   };
 
-  const getStatusMessage = () => {
-    switch (generationStatus) {
-      case 'initiating':
-        return 'Initiating video generation...';
-      case 'generating':
-        return 'Generating video...';
-      case 'retrieving':
-        return 'Retrieving video...';
-      case 'ready':
-        return 'Video ready, preparing download...';
-      case 'downloading':
-        return 'Downloading video...';
-      case 'complete':
-        return 'Complete!';
-      case 'error':
-        return 'Error occurred';
-      default:
-        return '';
-    }
-  };
-
   return (
-    <div className="flex flex-col justify-center p-4 md:p-8 min-h-[88vh] bg-background">
-      <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
+    <div className="flex flex-col h-[92vh] justify-center bg-background">
+      <div className="flex flex-col mx-auto w-full h-full">
         
         {!videos.length && !isGenerating && !messages.length && (
-          <div className="flex-1 flex items-center justify-center min-h-200">
+          <div className="flex-1 flex items-center justify-center h-200">
             <Overview />
           </div>
         )}
 
-        <VideoReel videos={videos} session={session} />
-
-        {isGenerating && (
-          <div className="flex-1 flex items-center justify-center min-h-200">
-            <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg min-w-[300px]">
-              <div className="flex items-center gap-2">
-                <LoaderIcon className="animate-spin" size={20} />
-                <span className="text-sm font-medium">{getStatusMessage()}</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <span className="text-xs text-muted-foreground">{progress}%</span>
-            </div>
-          </div>
-        )}
-
-        {messages.length > 0 && !videos.length && !isGenerating && (
+        <div className="flex-1">
+          <VideoReel 
+            videos={videos} 
+            session={session} 
+            isGenerating={isGenerating} 
+            generationStatus={generationStatus}
+            progress={progress}
+            />
+        </div>
+        {/* {messages.length > 0 && !videos.length && !isGenerating && (
           <div
             ref={messagesContainerRef}
             className="flex-1 flex flex-col gap-4 overflow-y-auto px-4 py-2"
@@ -293,12 +260,12 @@ export function Chat({
               className="shrink-0 min-h-[24px]"
             />
           </div>
-        )}
+        )} */}
 
         <div className="p-4">
           <form 
             onSubmit={handleSubmit}
-            className="flex flex-row gap-2 relative items-end w-full max-w-2xl mx-auto"
+            className="flex flex-row gap-2 relative items-end w-full h-full max-w-2xl mx-auto"
           >
             <MultimodalInput
               input={input}

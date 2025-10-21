@@ -1,4 +1,4 @@
-import { auth } from "@/app/(auth)/auth";
+import { auth } from "@/auth";
 import ai from "@/lib/gemini";
 import { NextRequest, NextResponse } from "next/server";
 

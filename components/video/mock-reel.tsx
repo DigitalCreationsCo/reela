@@ -1,15 +1,16 @@
 import { useRef, useState, useEffect } from "react";
 import { LoaderIcon } from "lucide-react";
-import { VideoEditor } from "./editor";
+import { MockVideoEditor } from "./mock-editor";
 import { Session } from "next-auth";
+import { MockVideoInfo } from "./mock-info";
+import { Progress } from "./progress";
 import { Video } from "@/db/schema";
-import { VideoInfo } from "./info";
 
 /**
  * VideoReel renders a vertical snap-scrolling feed with only one video player in the DOM at a time.
  * Each video "page" uses snap-y scroll. Only the visible video is rendered. Scrolling works as intended.
  */
-interface VideoReelProps {
+interface MockVideoReelProps {
   videos: Video[];
   session: Session | null;
   onSaveVideo?: (videoId: string, videoUrl: string, prompt: string) => Promise<void>;
@@ -21,7 +22,7 @@ interface VideoReelProps {
   className?: string;
 }
 
-export function VideoReel({
+export function MockVideoReel({
   videos,
   session,
   onSaveVideo,
@@ -30,18 +31,10 @@ export function VideoReel({
   generationStatus,
   progress,
   className = "",
-}: VideoReelProps) {
+}: MockVideoReelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-
-  // Set initial load flag for intro transitions
-  useEffect(() => {
-    if (videos.length > 0 && isInitialLoad) {
-      setTimeout(() => setIsInitialLoad(false), 300);
-    }
-  }, [videos, isInitialLoad]);
 
   // Initialize video refs array when videos change
   useEffect(() => {
@@ -125,34 +118,31 @@ export function VideoReel({
     }
   };
 
+  if (!videos.length && !isGenerating) return <></>;
+
+  if (!videos.length && isGenerating) {
+    return (
+      <div className="flex h-200 items-center justify-center">
+        <Progress progress={progress} status={getStatusMessage()} />
+      </div>
+    );
+  }
+
   return (
     <div className={`relative h-full ${className}`}>
-      {videos.length === 0 && isGenerating ? (
-        <div className="flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2 bg-secondary rounded-lg min-w-[300px] max-w-xs">
-            <div className="flex items-center gap-2">
-              <LoaderIcon className="animate-spin" size={20} />
-              <span className="text-sm font-medium">{getStatusMessage()}</span>
-            </div>
-            <div className="w-full bg-background/20 rounded-full h-2.5">
-              <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
-            </div>
-            <span className="text-xs text-muted-foreground">{progress}%</span>
-          </div>
-        </div>
-      ) : (
+      {(
         // Only render <VideoPlayer/> for the visible snap page; use "pages" to allow scroll/snap.
         <div
           ref={containerRef}
-          className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-[calc(100vh-8rem)] sm:h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] lg:h-[78vh]"
+          className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-[78vh]"
           // Set scrollBehavior to 'auto' for instant, very fast scroll
-          style={{ scrollBehavior: "auto", maxHeight: "90vh" }}
+          style={{ scrollBehavior: "auto" }}
         >
           {videos.map((video, i) => (
             <div
-              key={video.id}
+              key={`${video.id}}`}
               ref={(el) => { videoRefs.current[i] = el; }}
-              className="snap-start w-full flex items-center justify-center h-[calc(100vh-8rem)] sm:h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] lg:h-[78vh] relative"
+              className="snap-start w-full flex items-center justify-center h-[100vh] sm:h-[90vh] md:h-[85vh] lg:h-[80vh] xl:h-[78vh] relative"
               style={{
                 overflow: "hidden",
                 transition: "opacity 0.2s ease-in-out, transform 0.2s ease-in-out",
@@ -166,31 +156,31 @@ export function VideoReel({
             >
               {/* Always render a placeholder, but only render VideoPlayer for active */}
               {Math.abs(i - activeIndex) <= 1 ? (
-                <div className="w-full flex flex-col xl:flex-row items-stretch justify-center h-full p-2 sm:p-4 lg:p-0">
-                  {/* VideoInfo (left sidebar) for xl+ */}
-                  <div className="hidden xl:flex flex-col items-stretch w-80 max-w-xs flex-shrink-0 border-r bg-background/90 backdrop-blur-sm">
-                    {!isGenerating && !isInitialLoad && (
-                      <VideoInfo video={video} session={session} />
+                <div className="w-full flex flex-col lg:flex-row items-stretch justify-center h-full mx-auto">
+                  {/* VideoInfo (left sidebar) for lg+ */}
+                  <div className="hidden lg:flex flex-col items-stretch w-72 xl:w-80 flex-shrink-0 border-r bg-background/90 backdrop-blur-sm">
+                    {!isGenerating && (
+                      <MockVideoInfo video={video} session={session} />
                     )}
                   </div>
-                  <div className="flex flex-col w-full relative max-w-full">
+                  <div className="flex flex-col w-full relative min-h-0">
                     {i === activeIndex && (
-                      <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex-1 flex items-center justify-center p-2 sm:p-4 lg:p-6">
                         <div className="w-full max-w-4xl aspect-video">
-                          <VideoEditor
+                          <MockVideoEditor
                             video={video}
                             videoError=""
                             setVideoError={() => {}}
-                            key={video.fileId || video.id}
+                            key={video.id}
                           />
                         </div>
                       </div>
                     )}
-                    {/* On mobile, show VideoInfo below the player */}
-                    <div className="w-full xl:hidden flex mt-2 sm:mt-4">
-                      {!isGenerating && !isInitialLoad && i === activeIndex && (
-                        <div className="w-full max-w-4xl mx-auto">
-                          <VideoInfo video={video} session={session} />
+                    {/* On mobile/tablet, show VideoInfo below the player */}
+                    <div className="w-full lg:hidden flex-shrink-0 border-t bg-background/95 backdrop-blur-sm">
+                      {!isGenerating && i === activeIndex && (
+                        <div className="p-3 sm:p-4">
+                          <MockVideoInfo video={video} session={session} />
                         </div>
                       )}
                     </div>
@@ -199,21 +189,14 @@ export function VideoReel({
               ) : (
                 // Spacer block for scroll feed, ensures correct snap-to "page"
                 <div className="w-full h-full bg-muted/10 flex items-center justify-center">
-                  <div className="text-muted-foreground text-sm">Video {i + 1}</div>
+                  <div className="text-muted-foreground text-sm sm:text-base">Video {i + 1}</div>
                 </div>
               )}
               {/* Overlay progress for the currently generating video */}
-              {i === videos.length - 1 && isGenerating && i === activeIndex && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[10]">
-                  <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg w-full max-w-xs mx-4">
-                    <div className="flex items-center gap-2">
-                      <LoaderIcon className="animate-spin" size={20} />
-                      <span className="text-sm font-medium">{getStatusMessage()}</span>
-                    </div>
-                    <div className="w-full bg-background/20 rounded-full h-2.5">
-                      <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{progress}%</span>
+              {i === videos.length - 1 && i === activeIndex && isGenerating && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[10] p-4">
+                  <div className="w-full max-w-sm">
+                    <Progress progress={progress} status={getStatusMessage()} />
                   </div>
                 </div>
               )}

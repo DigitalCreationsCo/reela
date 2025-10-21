@@ -1,9 +1,8 @@
 import { Metadata } from "next";
 import { Toaster } from "sonner";
-
 import { Navbar } from "@/components/custom/navbar";
 import { ThemeProvider } from "@/components/custom/theme-provider";
-
+import { auth } from "@/auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,17 +16,18 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await auth();
   return (
-    <html lang="en">
-      <body className="dark antialiased">
+    <html lang="en" className="dark">
+      <body className="antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
+          <Navbar session={session} />
           <Toaster position="top-center" />
-          <Navbar />
           {children}
         </ThemeProvider>
       </body>

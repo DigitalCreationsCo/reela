@@ -1,0 +1,375 @@
+import { NextResponse } from "next/server";
+import ai from "@/lib/gemini";
+import { GenerateVideosOperation } from "@google/genai";
+import { auth } from "@/auth";
+import {
+  deleteChatById,
+  getChatById,
+} from "@/db/queries";
+
+// Error types for better categorization
+enum ErrorType {
+  AUTHENTICATION_ERROR = 'authentication_error',
+  QUOTA_EXCEEDED = 'quota_exceeded',
+  INVALID_REQUEST = 'invalid_request',
+  TIMEOUT_ERROR = 'timeout_error',
+  NETWORK_ERROR = 'network_error',
+  GENERATION_FAILED = 'generation_failed',
+  UNKNOWN_ERROR = 'unknown_error'
+}
+
+// Helper function to categorize Google API errors
+function categorizeError(error: any): { type: ErrorType; message: string; statusCode: number } {
+  const errorMessage = error?.message || error?.toString() || 'Unknown error';
+  if (errorMessage.includes('unauthorized') || errorMessage.includes('authentication') ||
+      errorMessage.includes('permission') || error?.status === 401 || error?.status === 403) {
+    return {
+      type: ErrorType.AUTHENTICATION_ERROR,
+      message: 'Authentication failed or insufficient permissions',
+      statusCode: 401
+    };
+  } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit') ||
+      errorMessage.includes('too many requests') || error?.status === 429) {
+    return {
+      type: ErrorType.QUOTA_EXCEEDED,
+      message: 'API quota exceeded or rate limit reached',
+      statusCode: 429
+    };
+  } else if (errorMessage.includes('invalid') || errorMessage.includes('bad request') ||
+      error?.status === 400) {
+    return {
+      type: ErrorType.INVALID_REQUEST,
+      message: 'Invalid request parameters or format',
+      statusCode: 400
+    };
+  } else if (errorMessage.includes('timeout') || errorMessage.includes('deadline') ||
+      error?.code === 'DEADLINE_EXCEEDED') {
+    return {
+      type: ErrorType.TIMEOUT_ERROR,
+      message: 'Request timed out',
+      statusCode: 408
+    };
+  } else if (errorMessage.includes('network') || errorMessage.includes('connection') ||
+      errorMessage.includes('fetch') || error?.code === 'ECONNREFUSED') {
+    return {
+      type: ErrorType.NETWORK_ERROR,
+      message: 'Network connection error',
+      statusCode: 503
+    };
+  } else if (errorMessage.includes('generation failed') || errorMessage.includes('content policy') ||
+      errorMessage.includes('safety') || error?.status === 422) {
+    return {
+      type: ErrorType.GENERATION_FAILED,
+      message: 'Video generation failed due to content policy or safety restrictions',
+      statusCode: 422
+    };
+  }
+  return {
+    type: ErrorType.UNKNOWN_ERROR,
+    message: errorMessage,
+    statusCode: 500
+  };
+}
+
+export async function POST(request: Request) {
+  try {
+    // Parse FormData (multipart)
+    const formData = await request.formData();
+
+    const prompt = formData.get("prompt");
+    const referenceFrame = formData.get("referenceFrame");
+    const side = formData.get("side");
+    const videoId = formData.get("videoId");
+
+    // Validate incoming form fields
+    if (
+      typeof prompt !== "string" ||
+      !referenceFrame ||
+      (side !== "start" && side !== "end") ||
+      typeof videoId !== "string"
+    ) {
+      return NextResponse.json(
+        {
+          error: "All fields (prompt, referenceFrame, side, videoId) are required",
+          type: ErrorType.INVALID_REQUEST
+        },
+        { status: 400 }
+      );
+    }
+
+    const session = await auth();
+
+    // Optionally add authentication for creating extensions
+
+    const encoder = new TextEncoder();
+    let currentOperation: GenerateVideosOperation | null = null;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'initiating', progress: 0 })}\n\n`)
+          );
+
+          // The Google SDK's generation interface would have to be adapted for extension with a frame.
+          currentOperation = await ai.models.generateVideos({
+            // model: 'veo-3.0-fast-generate-001',
+            model: 'veo-2.0-generate-001',
+            source: {
+              prompt,
+              image: referenceFrame // This assumes the SDK can accept a FormData Blob/File. Adapt as needed.
+            },
+            config: {
+              numberOfVideos: 1,
+              durationSeconds: 6,
+              abortSignal: request.signal
+            }
+          });
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'generating', progress: 10 })}\n\n`)
+          );
+
+          let pollCount = 0;
+          const maxPolls = 60;
+
+          while (!currentOperation.done && pollCount < maxPolls) {
+            if (request.signal?.aborted) {
+              try {
+                if (currentOperation?.name) {
+                  await ai.operations.getVideosOperation({
+                    operation: currentOperation,
+                    config: { abortSignal: request.signal }
+                  });
+                }
+              } catch {}
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  status: 'cancelled',
+                  message: 'Request cancelled by client'
+                })}\n\n`)
+              );
+              controller.close();
+              return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+            try {
+              currentOperation = await ai.operations.getVideosOperation({
+                operation: currentOperation,
+                config: { abortSignal: request.signal }
+              });
+            } catch (pollError) {
+              const { type, message, statusCode } = categorizeError(pollError);
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  status: 'error',
+                  error: message,
+                  type,
+                  statusCode
+                })}\n\n`)
+              );
+              controller.close();
+              return;
+            }
+            pollCount++;
+            const progress = Math.min(10 + (pollCount / maxPolls) * 120, 80);
+
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'generating',
+                progress: Math.round(progress),
+                pollCount
+              })}\n\n`)
+            );
+          }
+
+          if (request.signal?.aborted) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'cancelled',
+                message: 'Request cancelled by client'
+              })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
+
+          if (!currentOperation.done) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'error',
+                error: 'Video generation timed out after maximum polling attempts',
+                type: ErrorType.TIMEOUT_ERROR,
+                statusCode: 408
+              })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
+
+          if (currentOperation.error) {
+            const { type, message, statusCode } = categorizeError(currentOperation.error);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'error',
+                error: message,
+                type,
+                statusCode
+              })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
+
+          if (!currentOperation.response?.generatedVideos?.[0]?.video?.uri) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'error',
+                error: 'Video generation completed but no video was produced',
+                type: ErrorType.GENERATION_FAILED,
+                statusCode: 422
+              })}\n\n`)
+            );
+            controller.close();
+            return;
+          }
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'retrieving', progress: 85 })}\n\n`)
+          );
+
+          try {
+            const generatedVideo = await ai.files.get({
+              name: currentOperation.response.generatedVideos[0].video.uri,
+            });
+
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ status: 'ready', progress: 90 })}\n\n`)
+            );
+
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'complete',
+                progress: 100,
+                video: generatedVideo
+              })}\n\n`)
+            );
+
+            controller.close();
+          } catch (fileError) {
+            const { type, message, statusCode } = categorizeError(fileError);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                status: 'error',
+                error: `Failed to retrieve video file: ${message}`,
+                type,
+                statusCode
+              })}\n\n`)
+            );
+            controller.close();
+          }
+        } catch (error) {
+          throw error;
+        }
+      },
+      cancel() {
+        if (currentOperation?.name) {
+          ai.operations.getVideosOperation({
+            operation: currentOperation,
+            config: { abortSignal: request.signal }
+          }).catch(() => {});
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  } catch (error) {
+    const { type, message, statusCode } = categorizeError(error);
+    return NextResponse.json(
+      {
+        error: message,
+        type,
+        timestamp: new Date().toISOString()
+      },
+      { status: statusCode }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        {
+          error: "Chat ID is required",
+          type: ErrorType.INVALID_REQUEST
+        },
+        { status: 400 }
+      );
+    }
+
+    const session = await auth();
+
+    if (!session || !session.user) {
+      return NextResponse.json(
+        {
+          error: "Authentication required",
+          type: ErrorType.AUTHENTICATION_ERROR
+        },
+        { status: 401 }
+      );
+    }
+
+    const chat = await getChatById({ id });
+
+    if (!chat) {
+      return NextResponse.json(
+        {
+          error: "Chat not found",
+          type: ErrorType.INVALID_REQUEST
+        },
+        { status: 404 }
+      );
+    }
+
+    if (chat.userId !== session.user.id) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized to delete this chat",
+          type: ErrorType.AUTHENTICATION_ERROR
+        },
+        { status: 403 }
+      );
+    }
+
+    await deleteChatById({ id });
+
+    return NextResponse.json(
+      {
+        message: "Chat deleted successfully",
+        id
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    const { type, message, statusCode } = categorizeError(error);
+    return NextResponse.json(
+      {
+        error: `Failed to delete chat: ${message}`,
+        type,
+        timestamp: new Date().toISOString()
+      },
+      { status: statusCode }
+    );
+  }
+}

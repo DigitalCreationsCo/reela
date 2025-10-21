@@ -1,13 +1,22 @@
-import { NextAuthConfig } from "next-auth";
+import NextAuth, { User, Session } from "next-auth";
+import Google from "next-auth/providers/google"
+import { getUser } from "@/db/queries";
 
-export const authConfig = {
-  pages: {
-    signIn: "/login",
-    newUser: "/",
-  },
+interface ExtendedSession extends Session {
+  user: User;
+}
+
+export const {
+  handlers: { GET, POST },
+  auth,
+  signIn,
+  signOut,
+} = NextAuth({
   providers: [
-    // added later in auth.ts since it requires bcrypt which is only compatible with Node.js
-    // while this file is also used in non-Node.js environments
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
   ],
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
@@ -36,5 +45,25 @@ export const authConfig = {
 
       return true;
     },
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+      }
+
+      return token;
+    },
+    async session({
+      session,
+      token,
+    }: {
+      session: ExtendedSession;
+      token: any;
+    }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+      }
+
+      return session;
+    },
   },
-} satisfies NextAuthConfig;
+});

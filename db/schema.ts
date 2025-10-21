@@ -16,7 +16,7 @@ export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   email: varchar("email", { length: 64 }).notNull(),
   name: varchar("name", { length: 64 }).notNull(),
-  username: varchar("username", { length: 64 }).notNull(),
+  username: varchar("username", { length: 32 }).notNull().unique(),
   password: varchar("password", { length: 64 }),
 });
 
@@ -56,7 +56,7 @@ export const video = pgTable("Video", {
   genre: varchar("genre", { length: 64 }), 
   format: varchar("format", { length: 32 }),
   title: varchar("title", { length: 255 }),
-  prompt: varchar("title", { length: 1200 }),
+  prompt: varchar("prompt", { length: 1200 }),
   description: text("description"),
   duration: integer("duration"),
   fileSize: integer("fileSize"),
@@ -67,10 +67,9 @@ export const video = pgTable("Video", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   userId: uuid("userId")
     .notNull()
-    .references(() => user.id),
-  author: varchar("author")
-    .notNull()
-    .references(() => user.username),
+    .references(() => user.id), // Foreign key reference to User table
+  author: varchar("author", { length: 64 })
+    .notNull(), // Stores the username as a string (denormalized for performance)
 });
 
 export class Video implements InferSelectModel<typeof video> {

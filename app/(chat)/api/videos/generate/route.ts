@@ -8,7 +8,7 @@ import {
   generateSampleFlightStatus,
   generateSampleSeatSelection,
 } from "@/ai/actions";
-import { auth } from "@/app/(auth)/auth";
+import { auth } from "@/auth";
 import {
   createReservation,
   deleteChatById,
@@ -144,7 +144,8 @@ export async function POST(request: Request) {
           );
 
           currentOperation = await ai.models.generateVideos({
-            model: 'veo-3.0-fast-generate-001',
+            // model: 'veo-3.0-fast-generate-001',
+            model: 'veo-2.0-generate-001',
             source: {
               prompt: messages[0].content,
             },

@@ -1,8 +1,7 @@
+"use client";
 import Image from "next/image";
 import Link from "next/link";
-
-import { auth, signOut } from "@/app/(auth)/auth";
-
+import { auth, signIn, signOut } from "@/auth";
 import { History } from "./history";
 import { SlashIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
@@ -13,21 +12,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { FileImageIcon, FileMinusIcon, FilmIcon } from "lucide-react";
+import { FileImageIcon, FileMinusIcon, FilmIcon, LogInIcon } from "lucide-react";
+import { signInWithGoogle } from "@/app/actions";
 
-export const Navbar = async () => {
-  let session = await auth();
-
+export const Navbar = ({ session }: any) => {
   return (
     <>
-      <div className="bg-background absolute top-0 left-0 w-dvw py-2 px-3 justify-between flex flex-row items-center z-30">
+      <div className="bg-background top-0 left-0 w-dvw py-2 px-3 justify-between flex flex-row items-start z-30">
         <div className="flex flex-row gap-3 items-center">
           {/* <History user={session?.user} /> */}
           <div className="flex flex-row gap-2 items-center">
-            <div className="text-zinc-500">
+            {/* <div className="text-zinc-500">
               <FileImageIcon size={16} />
-            </div>
-            <div className="dark:text-zinc-300 truncate md:w-fit text-lg">
+            </div> */}
+            <div className="dark:text-primary truncate md:w-fit text-lg">
               Reelo
             </div>
             <Image
@@ -56,13 +54,7 @@ export const Navbar = async () => {
               <DropdownMenuItem className="p-1 z-50">
                 <form
                   className="w-full"
-                  action={async () => {
-                    "use server";
-
-                    await signOut({
-                      redirectTo: "/",
-                    });
-                  }}
+                  action={() => signOut({ redirectTo: "/" })}
                 >
                   <button
                     type="submit"
@@ -75,9 +67,45 @@ export const Navbar = async () => {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <Button className="py-1.5 px-2 h-fit font-normal text-white" asChild>
-            <Link href="/login">Login</Link>
-          </Button>
+          <>
+            {!session?.user && (
+              <Button 
+              onClick={() => signInWithGoogle}
+              variant="default" 
+              size="sm"
+              className="flex items-center gap-2"
+              >
+                <LogInIcon size={16} />
+                Log in to keep your videos
+              </Button>
+            )}
+      
+            {/* {session?.user && 
+            <div className="flex items-center gap-2">
+              {!isSaved ? (
+              <Button 
+                  onClick={saveVideo}
+                  disabled={isSaving}
+                  variant="default" 
+                  size="sm"
+                  className="flex items-center gap-2"
+              >
+                  {isSaving ? (
+                  <LoaderIcon className="animate-spin" size={16} />
+                  ) : (
+                  <SaveIcon size={16} />
+                  )}
+                  {isSaving ? 'Saving...' : 'Save Video'}
+              </Button>
+              ) : (
+              <div className="flex items-center gap-2 text-green-600">
+                  <SaveIcon size={16} />
+                  <span className="text-sm font-medium">Video Saved!</span>
+              </div>
+              )}
+            </div>
+            } */}
+          </>
         )}
       </div>
     </>

@@ -1,13 +1,22 @@
-import { LoaderIcon, SaveIcon, LogInIcon, TrashIcon, DownloadIcon } from "lucide-react";
+import { LoaderIcon, TrashIcon, DownloadIcon } from "lucide-react";
 import { Session } from "next-auth";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "../ui/button";
+import { mockAsyncFetch } from "../custom/mock-chat";
 import { Video } from "@/db/schema";
 
-export const VideoInfo = ({ video, session }: { video: Video, session: Session | null }) => {
+export const MockVideoInfo = ({ video, session }: { video: Video, session: Session | null }) => {
     const [collapsed, setCollapsed] = useState(true);
     const [isDownloading, setIsDownloading] = useState(false);
     
+    // const genre = "Sci-Fi";
+    // const title = "Mock Video Title";
+    // const createdAt = new Date().toLocaleString();
+    // const description = "This is a mock description of the video. In real usage, this would be the prompt or summary.";
+    // const views = 42;
+    // const author = "Mock Author";
+    // const format = "mp4";
+    // const fileId = 'fake-fild-id';
     const genre = (video.genre || (video.metadata && typeof video.metadata === "object" && (video.metadata as any).genre)) ?? "N/A";
     const title = video.title && String(video.title).trim().length > 0 ? video.title : null;
     const createdAt = video.createdAt
@@ -21,20 +30,13 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
 
 
     const handleDeleteVideo = useCallback((videoId: string) => {
-    //     if (onDeleteVideo) {
-    //       onDeleteVideo(videoId);
-    //     }
-    //   }, [onDeleteVideo]);
-    
-    //   if (videos.length === 0) {
-    //     return null;
     }, []);
 
     const handleDownload = async () => {
         setIsDownloading(true);
         try {
             // Fetch the video from your streaming endpoint
-            const response = await fetch(`/api/videos/stream/${video.fileId}`);
+            const response = await fetch(`/api/videos/mock-stream/${video.fileId}`);
             
             if (!response.ok) {
                 throw new Error('Failed to download video');
@@ -114,13 +116,13 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                     <span>{video.format}</span>
                 </div>
                 )}
-                {video.duration && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Duration:</span>
                     <span>{video.duration}</span>
                 </div>
                 )}
-                {video.fileSize && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Size:</span>
                     <span>{(typeof video.fileSize === "number" 
@@ -128,13 +130,13 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                     : video.fileSize) }</span>
                 </div>
                 )}
-                {video.status && (
+                {(
                 <div className="flex items-center gap-1 text-xs">
                     <span className="font-medium">Status:</span>
                     <span>{video.status}</span>
                 </div>
                 )}
-                {video.updatedAt && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Updated </span>
                     <span>
@@ -180,7 +182,7 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                         <Button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteVideo(video.id);
+                            handleDeleteVideo("");
                         }}
                         variant="outline"
                         size="sm"

@@ -208,10 +208,10 @@ export function MultimodalInput({
 
         <Textarea
           ref={textareaRef}
-          placeholder="Describe your clip. The more detail, the better!"
+          placeholder="What will you create?"
           value={input}
           onChange={handleInput}
-          className="min-h-[24px] border-0 overflow-hidden resize-none rounded-lg text-base bg-gradient-to-br from-zinc-100 via-zinc-50 to-zinc-200 dark:from-zinc-900 dark:via-zinc-800 dark:to-zinc-700"
+          className="min-h-[24px] border-0 overflow-hidden resize-none rounded-lg text-base bg-gradient-to-tl from-zinc-100 via-zinc-50 to-zinc-200 dark:from-zinc-900 dark:via-zinc-800 dark:to-zinc-700 text-foreground"
           rows={3}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -228,7 +228,7 @@ export function MultimodalInput({
 
       {isLoading ? (
         <Button
-          className="rounded-full p-1.5 h-fit absolute bottom-2 right-2 m-0.5 text-white"
+          className="rounded-full p-1.5 h-fit absolute bottom-2 right-2 m-0.5 text-foreground"
           onClick={(event) => {
             event.preventDefault();
             stop();
@@ -238,7 +238,7 @@ export function MultimodalInput({
         </Button>
       ) : (
         <Button
-          className="rounded-full p-1.5 h-fit absolute bottom-2 right-2 m-0.5 text-white"
+          className="rounded-full p-1.5 h-fit absolute bottom-2 right-2 m-0.5 text-foreground"
           onClick={(event) => {
             event.preventDefault();
             submitForm(event);
@@ -249,7 +249,7 @@ export function MultimodalInput({
         </Button>
       )}
 
-      {/* <Button
+      <Button
         className="rounded-full p-1.5 h-fit absolute bottom-2 right-10 m-0.5 dark:border-zinc-700"
         onClick={(event) => {
           event.preventDefault();
@@ -259,7 +259,7 @@ export function MultimodalInput({
         disabled={isLoading}
       >
         <PaperclipIcon size={14} />
-      </Button> */}
+      </Button>
     </div>
   );
 }
