@@ -632,15 +632,18 @@ export const MockVideoEditor = ({
 
   // Renders a segment's content (either renders a placeholder for placeholders, otherwise a <video> player using url from Video)
   const renderSegment = (segment: Segment) => {
+    // Return null if no segment provided
     if (!segment) return null;
-    if (segment.type === "placeholder" && segment.placeholderComponent)
+    
+    // For placeholder segments, render the custom placeholder component
+    if (segment.type === "placeholder" && segment.placeholderComponent) {
       return segment.placeholderComponent;
+    }
 
-    const url =
-      segment.videoData?.uri ||
-      segment.url ||
-      "";
+    // Get the video URL from either videoData.uri or segment.url
+    const url = segment.videoData?.uri || segment.url || "";
 
+    // If we have a valid URL, render the video player
     if (url) {
       return (
         <video
@@ -656,6 +659,8 @@ export const MockVideoEditor = ({
         />
       );
     }
+
+    // Fallback for segments without valid URLs
     return (
       <div className="flex items-center justify-center w-full min-h-[220px] bg-gray-100 rounded-lg border">
         <span className="text-gray-500 text-lg">No video available</span>
@@ -663,14 +668,10 @@ export const MockVideoEditor = ({
     );
   };
 
-  // --- NEW: Revising playAll to *combine* all segments, starting from selectedSegment, into a single Blob and play it as one video (real concatenation) ---
-  const joinSegmentsToSingleBlob = async (segments: Segment[], startIdx: number) => {
-    // Only segments with URLs, skip placeholders
-    const realSegs = segments
-      .filter((s) => s.type !== "placeholder" && s.url)
-      .slice(startIdx);
-
-    if (!realSegs.length) throw new Error("No playable segments to join.");
+  // --- Seamlessly join and play all segments in one buffer ---
+  const joinSegmentsToSingleBlob = async (segments: Segment[]) => {
+    const realSegs = segments.filter(s => s.type !== "placeholder" && s.url);
+    if (realSegs.length === 0) throw new Error("No playable segments to join.");
 
     let blobs: Uint8Array[] = [];
     let totalLength = 0;
@@ -696,62 +697,42 @@ export const MockVideoEditor = ({
     return new Blob([joined], { type: "video/mp4" });
   };
 
-  const [seamlessObjectUrl, setSeamlessObjectUrl] = useState<string | null>(null);
-
-  // Main playAll logic: concatenate all segments from selectedSegment index!!
+  // Play all segments seamlessly regardless of selectedSegment
   const handlePlayAllSegments = async () => {
-    // Find index of selectedSegment among segments in play order
-    const idx = segments.findIndex(
-      (s) => s.key === selectedSegment
-    );
-
-    // Compute real, ordered, play queue: remove placeholders, only URL segments
-    const realSegs = segments.filter((s) => s.type !== "placeholder" && s.url);
-    const startIdx =
-      idx >= 0
-        ? realSegs.findIndex((s) => s.key === segments[idx].key)
-        : 0;
-
     setPlayAllMode(true);
     setSeamlessLoading(true);
     setSeamlessUrl(null);
     setSeamlessError(null);
 
     try {
-      const joinedBlob = await joinSegmentsToSingleBlob(segments, startIdx >= 0 ? startIdx : 0);
+      const joinedBlob = await joinSegmentsToSingleBlob(segments);
       const objURL = URL.createObjectURL(joinedBlob);
       setSeamlessUrl(objURL);
-      setSeamlessObjectUrl(objURL);
     } catch (err: any) {
-      setSeamlessError(
-        "Failed to play all segments: " + (err?.message || `${err}`)
-      );
+      setSeamlessError("Failed to play all segments: " + (err?.message || `${err}`));
       setSeamlessUrl(null);
-      setSeamlessObjectUrl(null);
     }
     setSeamlessLoading(false);
   };
 
-  // Cleanup real objectURLs created
+  // Don't leave objectURLs lying around
   useEffect(() => {
     return () => {
-      if (seamlessObjectUrl) {
-        URL.revokeObjectURL(seamlessObjectUrl);
+      if (seamlessUrl) {
+        URL.revokeObjectURL(seamlessUrl);
       }
     };
     // eslint-disable-next-line
-  }, [seamlessObjectUrl]);
+  }, [seamlessUrl]);
 
+  // Stop play-all (and cleanup buffer and error)
   const stopPlayAll = () => {
     setPlayAllMode(false);
     setSeamlessUrl(null);
     setSeamlessError(null);
     setSeamlessLoading(false);
+    // Pause the video just in case
     seamlessRef.current?.pause();
-    if (seamlessObjectUrl) {
-      URL.revokeObjectURL(seamlessObjectUrl);
-      setSeamlessObjectUrl(null);
-    }
   };
 
   // If video changes, stop seamless mode
