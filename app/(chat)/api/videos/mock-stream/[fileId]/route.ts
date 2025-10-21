@@ -1,42 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import { promises as fs } from "fs";
 
-const SAMPLE_VIDEO_DIR = path.join(process.cwd());
+// The base URL of your backend or CDN where videos are hosted
+// Example: http://localhost:3002 or https://your-cdn.com
+const REMOTE_VIDEO_BASE_URL = process.env.REMOTE_VIDEO_BASE_URL || "http://localhost:3000/";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { fileId: string } }
 ) {
-  // No authentication required for local mock streaming
+  // No authentication required for mock streaming
 
+  const { fileId } = params;
+  console.log('[API: mock-stream] params.fileId: ', fileId, params);
   // For security: only allow filenames that are simple, no path traversal
-  const safeFileId = await params.fileId.replace(/[^a-zA-Z0-9._-]/g, "");
-  const videoPath = path.join(SAMPLE_VIDEO_DIR, `${safeFileId}.mp4`);
+  const safeFileId = fileId.replace(/[^a-zA-Z0-9._-]/g, "");
+  const videoUrl = `${REMOTE_VIDEO_BASE_URL}/${safeFileId}.mp4`;
+
+  console.log('Fetching remote videoUrl: ', videoUrl);
 
   try {
-    // Check file existence and get file info (for Content-Length)
-    const stat = await fs.stat(videoPath);
-    if (!stat.isFile()) {
-      return new Response("Video file not found", { status: 404 });
+    const remoteResponse = await fetch(videoUrl);
+
+    if (!remoteResponse.ok) {
+      if (remoteResponse.status === 404) {
+        return new Response("Video file not found", { status: 404 });
+      }
+      console.error("Failed to fetch remote video:", remoteResponse.statusText);
+      return new Response("Error fetching remote video", { status: 502 });
     }
 
-    // Read the entire video file
-    const fileBuffer = await fs.readFile(videoPath);
+    // Clone headers but override as necessary
+    const headers = new Headers(remoteResponse.headers);
+    headers.set("Content-Type", "video/mp4");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    headers.set("Accept-Ranges", "bytes");
 
-    return new NextResponse(fileBuffer, {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Length": stat.size.toString(),
-        "Cache-Control": "public, max-age=31536000, immutable",
-        "Accept-Ranges": "bytes",
-      },
+    return new Response(remoteResponse.body, {
+      status: 200,
+      headers,
     });
   } catch (error: any) {
-    if (error.code === "ENOENT") {
-      return new Response("Video file not found", { status: 404 });
-    }
-    console.error("Error reading local video:", error);
-    return new Response("Error reading local video", { status: 500 });
+    console.error("Error fetching remote video:", error);
+    return new Response("Error proxying remote video", { status: 500 });
   }
 }

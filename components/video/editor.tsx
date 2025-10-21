@@ -507,8 +507,8 @@ export const VideoEditor = ({
   const displayedSegment = getSegmentById(selectedSegment) || segments[0];
 
   return (
-    <div className="w-full mx-auto px-12">
-      <div className="relative">
+    <div className="w-full border h-fit mx-auto px-12">
+      <div className="relative border h-fit">
         {/* "Extend" button at the left (start) */}
         <PlusCircleButton
           onClick={() => handlePromptOpen("start")}

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "PORT=3001 next dev --turbo",
+    "dev": "next dev --turbo",
     "build": "tsx db/migrate && next build",
     "start": "next start",
     "lint": "next lint"

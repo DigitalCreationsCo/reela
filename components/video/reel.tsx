@@ -144,7 +144,7 @@ export function VideoReel({
         // Only render <VideoPlayer/> for the visible snap page; use "pages" to allow scroll/snap.
         <div
           ref={containerRef}
-          className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-[calc(100vh-8rem)] sm:h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] lg:h-[78vh]"
+          className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-[78vh]"
           // Set scrollBehavior to 'auto' for instant, very fast scroll
           style={{ scrollBehavior: "auto", maxHeight: "90vh" }}
         >
@@ -152,7 +152,7 @@ export function VideoReel({
             <div
               key={video.id}
               ref={(el) => { videoRefs.current[i] = el; }}
-              className="snap-start w-full flex items-center justify-center h-[calc(100vh-8rem)] sm:h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] lg:h-[78vh] relative"
+              className="snap-start w-full flex items-center justify-center h-[78vh] relative"
               style={{
                 overflow: "hidden",
                 transition: "opacity 0.2s ease-in-out, transform 0.2s ease-in-out",
@@ -166,32 +166,26 @@ export function VideoReel({
             >
               {/* Always render a placeholder, but only render VideoPlayer for active */}
               {Math.abs(i - activeIndex) <= 1 ? (
-                <div className="w-full flex flex-col xl:flex-row items-stretch justify-center h-full p-2 sm:p-4 lg:p-0">
+                <div className="w-full flex flex-col xl:flex-row items-stretch justify-center h-full">
                   {/* VideoInfo (left sidebar) for xl+ */}
                   <div className="hidden xl:flex flex-col items-stretch w-80 max-w-xs flex-shrink-0 border-r bg-background/90 backdrop-blur-sm">
                     {!isGenerating && !isInitialLoad && (
                       <VideoInfo video={video} session={session} />
                     )}
                   </div>
-                  <div className="flex flex-col w-full relative max-w-full">
+                  <div className="flex flex-col w-full relative">
                     {i === activeIndex && (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="w-full max-w-4xl aspect-video">
-                          <VideoEditor
-                            video={video}
-                            videoError=""
-                            setVideoError={() => {}}
-                            key={video.fileId || video.id}
-                          />
-                        </div>
-                      </div>
+                      <VideoEditor
+                        video={video}
+                        videoError=""
+                        setVideoError={() => {}}
+                        key={video.fileId || video.id}
+                      />
                     )}
                     {/* On mobile, show VideoInfo below the player */}
-                    <div className="w-full xl:hidden flex mt-2 sm:mt-4">
+                    <div className="w-full xl:hidden flex">
                       {!isGenerating && !isInitialLoad && i === activeIndex && (
-                        <div className="w-full max-w-4xl mx-auto">
-                          <VideoInfo video={video} session={session} />
-                        </div>
+                        <VideoInfo video={video} session={session} />
                       )}
                     </div>
                   </div>
@@ -205,7 +199,7 @@ export function VideoReel({
               {/* Overlay progress for the currently generating video */}
               {i === videos.length - 1 && isGenerating && i === activeIndex && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-[10]">
-                  <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg w-full max-w-xs mx-4">
+                  <div className="flex flex-col items-center gap-2 p-4 bg-secondary rounded-lg min-w-[300px] max-w-xs">
                     <div className="flex items-center gap-2">
                       <LoaderIcon className="animate-spin" size={20} />
                       <span className="text-sm font-medium">{getStatusMessage()}</span>

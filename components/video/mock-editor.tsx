@@ -1,7 +1,6 @@
 import { LoaderIcon } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { mockAsyncFetch } from "../custom/mock-chat";
-import { createMockVideo } from "@/lib/mock-utils";
 import { Video } from "@/db/schema";
 
 // Simple Plus Icon SVG
@@ -57,7 +56,7 @@ const VideoSegmentPill = ({
   <button
     className={`flex flex-col items-center 
       border ${selected ? "border-blue-600" : "border-gray-300"}
-      rounded-full px-2 py-1 mr-2 bg-background shadow text-xs transition min-w-[56px]
+      rounded-lg bg-background shadow text-xs transition max-w-[56px]
       ${type === "extension" ? "opacity-90" : ""}
     `}
     style={{
@@ -70,15 +69,12 @@ const VideoSegmentPill = ({
     <img
       src={thumbUrl}
       alt={type === "main" ? "Main video segment" : "Extension"}
-      className="w-10 h-6 object-cover rounded-full mb-1"
+      className="w-full h-auto object-cover"
       style={{
         border: type === "main" ? "2px solid #2563eb" : "2px solid #d1d5db",
         background: "#eee",
       }}
     />
-    <div className={`${type === "main" ? "text-blue-800" : "text-gray-500"} truncate`}>
-      {type === "main" ? "Main" : "Ext."}
-    </div>
   </button>
 );
 
@@ -198,19 +194,20 @@ export const MockVideoEditor = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const { fileId } = video;
-  // "Segment" now is an object with possible placeholder
+  const seamlessRef = useRef<HTMLVideoElement>(null);
+
+  // Segments 
   type Segment = {
     key: string;
     url?: string;
     type: "main" | "extension" | "placeholder";
     thumbUrl?: string;
     label: string;
-    videoData?: Video; // Now store Video for segment
+    videoData?: Video;
     isPlaceholder?: boolean;
     progress?: number;
     side?: "start" | "end";
-    placeholderComponent?: JSX.Element; // Store placeholder for placeholder segments
+    placeholderComponent?: JSX.Element;
   };
 
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -225,11 +222,19 @@ export const MockVideoEditor = ({
   // Extension streaming state
   const [streamProgress, setStreamProgress] = useState<number>(0);
 
+  // Seamless playback state
+  const [playAllMode, setPlayAllMode] = useState(false);
+  const [seamlessUrl, setSeamlessUrl] = useState<string | null>(null);
+  const [seamlessError, setSeamlessError] = useState<string | null>(null);
+  const [seamlessLoading, setSeamlessLoading] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
 
   // placeholder segment id, updated every extension fetch
   const [extPlaceholderKey, setExtPlaceholderKey] = useState<string | null>(null);
+
+  const { fileId } = video;
 
   // Compute stream url for main video segment
   const streamUrl = useMemo(
@@ -244,6 +249,9 @@ export const MockVideoEditor = ({
     setSelectedSegment("main");
     setIsLoading(true);
     setLoadProgress(0);
+    setPlayAllMode(false);
+    setSeamlessUrl(null);
+    setSeamlessError(null);
 
     // Get main segment thumb
     (async () => {
@@ -272,7 +280,7 @@ export const MockVideoEditor = ({
             type: "main",
             thumbUrl,
             label: "Main",
-            videoData: video, // Use Video object directly
+            videoData: video,
           },
         ]);
         setSelectedSegment("main");
@@ -282,16 +290,25 @@ export const MockVideoEditor = ({
     return () => {
       ignore = true;
     };
-    // Adding `video` as dependency since it's part of main segment.
   }, [streamUrl, fileId, video]);
 
-  // Video loading status (update to fix initial loading bug)
+  // Video loading status (prevent overlay masking extension segments)
   useEffect(() => {
+    // Only show loading for main segment and if not in play all
+    if (playAllMode || seamlessLoading) {
+      setIsLoading(false);
+      setLoadProgress(100);
+      return;
+    }
     setIsLoading(true);
     setLoadProgress(0);
 
     const videoElement = videoRef.current;
-    if (!videoElement) return;
+    if (!videoElement) {
+      setIsLoading(false);
+      setLoadProgress(100);
+      return;
+    }
 
     const handleProgress = () => {
       if (videoElement.buffered.length > 0) {
@@ -343,7 +360,6 @@ export const MockVideoEditor = ({
     videoElement.addEventListener('canplay', handleCanPlay);
     videoElement.addEventListener('error', handleError);
 
-    // If video is already loaded (fixes initial no-loading bug)
     if (videoElement.readyState >= 3) {
       setIsLoading(false);
       setLoadProgress(100);
@@ -355,7 +371,7 @@ export const MockVideoEditor = ({
       videoElement.removeEventListener('canplay', handleCanPlay);
       videoElement.removeEventListener('error', handleError);
     };
-  }, [setVideoError, selectedSegment, segments]);
+  }, [setVideoError, selectedSegment, segments, playAllMode, seamlessLoading]);
 
   const handlePromptOpen = (side: "start" | "end") => {
     setExtensionPromptOpen(side);
@@ -389,7 +405,6 @@ export const MockVideoEditor = ({
       progress: 0,
     };
 
-    // Insert placeholder in UI immediately
     setSegments((prev) => {
       if (extensionPromptOpen === "start") {
         return [placeholderSegment, ...prev];
@@ -397,30 +412,25 @@ export const MockVideoEditor = ({
         return [...prev, placeholderSegment];
       }
     });
-    // Select the placeholder
     setSelectedSegment(placeholderKey);
 
     try {
-      // Get the main segment reference
       const mainSegment = segments.find((s) => s.type === "main");
       if (!mainSegment) throw new Error("Main video segment missing");
 
       const mainUrlToUse = mainSegment.url!;
 
-      // 1. Extract frame
       const { dataUrl, blob: frameBlob } = await extractFrameDataUrl(
         mainUrlToUse,
         extensionPromptOpen === "start" ? "start" : "end"
       );
 
-      // 2. Build form data
       const formData = new FormData();
       formData.append("prompt", extensionPromptValue);
       formData.append("referenceFrame", frameBlob, "frame.jpg");
       formData.append("side", extensionPromptOpen as "start" | "end");
       formData.append("videoId", fileId);
 
-      // 3. POST to API to initiate extension generation (stream progress/events)
       const resp = await mockAsyncFetch("/api/videos/generate/extend", {
         method: "POST",
         body: formData,
@@ -437,7 +447,6 @@ export const MockVideoEditor = ({
         throw new Error(apiErrorMsg);
       }
 
-      // Progressively parse the /api/videos/generate/extend stream just like mockAsyncFetch in mock-chat.tsx
       let newFileId: string | undefined = undefined;
       let resultObj: any = undefined;
       let progressFromEvent = 0;
@@ -463,11 +472,9 @@ export const MockVideoEditor = ({
             } catch (e) {
               continue;
             }
-            // Handle error event
             if (data.status === "error") {
               throw new Error(data.error || "Extension generation failed");
             }
-            // Update progress UI for any step with .progress
             if (typeof data.progress === "number") {
               progressFromEvent = data.progress;
               setStreamProgress(progressFromEvent);
@@ -491,14 +498,12 @@ export const MockVideoEditor = ({
               );
             }
 
-            // On final success event
             if (
               data.status === "complete" &&
               data.video &&
               (typeof data.video.name === "string" || typeof data.video.fileId === "string")
             ) {
               resultObj = data.video;
-              // Use .name if present, else .fileId
               newFileId = (typeof data.video.name === "string" && data.video.name)
                 ? (data.video.name.startsWith("files/") ? data.video.name.replace(/^files\//, "") : data.video.name)
                 : (data.video.fileId ?? undefined);
@@ -514,9 +519,7 @@ export const MockVideoEditor = ({
         throw new Error("No fileId returned from API extension stream");
       }
 
-      // 4. Stream the generated video with progress updates
       setStreamProgress(progressFromEvent || 0);
-      // update the placeholder as the video streams!
       let currProgress = progressFromEvent || 0;
       const updateUIProgress = (p: number) => {
         currProgress = p;
@@ -541,18 +544,15 @@ export const MockVideoEditor = ({
       };
 
       const newVideoBlob = await (async () => {
-        // Wrap with a race to ensure progress stays in UI if streaming is fast
         let finished = false;
-        const blobPromise = streamExtensionVideo(
-          `/api/videos/mock-stream/${newFileId}`,
-          updateUIProgress
-        ).then((blob) => {
-          finished = true;
-          updateUIProgress(100);
-          return blob;
-        });
+        const blobPromise = fetch(`/api/videos/mock-stream/${newFileId}`)
+          .then(res => res.blob())
+          .then(blob => {
+            finished = true;
+            updateUIProgress(100);
+            return blob;
+          });
 
-        // Artificially delay for UI in superfast test environments, so placeholder is visible
         await Promise.race([
           blobPromise,
           new Promise((r) => setTimeout(r, 700)),
@@ -563,10 +563,8 @@ export const MockVideoEditor = ({
 
       setStreamProgress(100);
 
-      // 5. Create video segment URL
       const newSegmentUrl = URL.createObjectURL(newVideoBlob);
 
-      // 6. Get extension thumbnail
       let extThumb: string = "";
       try {
         const { dataUrl: thumb } = await extractFrameDataUrl(newSegmentUrl, "start");
@@ -576,17 +574,12 @@ export const MockVideoEditor = ({
         extThumb = "";
       }
 
-      // 7. Create the new video object (Video type)
       const newVideoObj = {
         id: `mock-${Date.now()}`,
         uri: newSegmentUrl,
-        // Fill in any other needed Video fields
-        // : `Extension ${extensionPromptOpen === "start" ? "Start" : "End"}`,
         createdAt: new Date(),
-        // Add more fields if your Video type requires
       } as Video;
 
-      // 8. Replace the placeholder with the new extension segment
       const newSegmentId = `extension-${Date.now()}`;
       const extSegment: Segment = {
         key: newSegmentId,
@@ -612,7 +605,6 @@ export const MockVideoEditor = ({
       );
       setExtensionPromptValue("");
     } catch (err: any) {
-      // Remove placeholder if error occurs
       setSegments((prev) => prev.filter((s) => s.key !== placeholderKey));
       setSelectedSegment("main");
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -625,57 +617,6 @@ export const MockVideoEditor = ({
       setStreamProgress(0);
       setExtPlaceholderKey(null);
     }
-  };
-
-  const streamExtensionVideo = async (
-    url: string,
-    onProgress: (value: number) => void
-  ): Promise<Blob> => {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Failed to fetch extension video stream");
-
-    const contentLength = Number("0");
-    const total = contentLength > 0 ? contentLength : undefined;
-    const reader = resp.body?.getReader();
-    if (!reader) throw new Error("Failed to get stream reader from response");
-
-    let receivedLength = 0;
-    const chunks = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        receivedLength += value.length ?? value.byteLength ?? 0;
-        if (total) {
-          onProgress(Math.floor((receivedLength / total) * 100));
-        } else {
-          // Unknown total, just incrementally bump (never hits 100)
-          onProgress(Math.min(99, receivedLength / 1024));
-        }
-      }
-    }
-
-    onProgress(100);
-
-    // Merge all Uint8Array chunks
-    let all: Uint8Array;
-    if (chunks.length === 1) {
-      all = chunks[0];
-    } else {
-      let len = 0;
-      for (const c of chunks) len += c.length ?? c.byteLength ?? 0;
-      all = new Uint8Array(len);
-      let pos = 0;
-      for (const c of chunks) {
-        all.set(c, pos);
-        pos += c.length ?? c.byteLength ?? 0;
-      }
-    }
-
-    // Type is video/mp4 (stream/endpoint contract)
-    return new Blob([all], { type: "video/mp4" });
   };
 
   const handlePromptClose = () => {
@@ -722,29 +663,174 @@ export const MockVideoEditor = ({
     );
   };
 
+  // --- NEW: Revising playAll to *combine* all segments, starting from selectedSegment, into a single Blob and play it as one video (real concatenation) ---
+  const joinSegmentsToSingleBlob = async (segments: Segment[], startIdx: number) => {
+    // Only segments with URLs, skip placeholders
+    const realSegs = segments
+      .filter((s) => s.type !== "placeholder" && s.url)
+      .slice(startIdx);
+
+    if (!realSegs.length) throw new Error("No playable segments to join.");
+
+    let blobs: Uint8Array[] = [];
+    let totalLength = 0;
+    for (let seg of realSegs) {
+      let blob: Blob;
+      try {
+        // Always re-fetch to ensure browser decodes the objectURL
+        blob = await fetch(seg.url!).then(r => r.blob());
+      } catch (e) {
+        continue;
+      }
+      let arr = new Uint8Array(await blob.arrayBuffer());
+      blobs.push(arr);
+      totalLength += arr.length;
+    }
+    if (!blobs.length) throw new Error("Unable to load any video segment data");
+    const joined = new Uint8Array(totalLength);
+    let off = 0;
+    for (let arr of blobs) {
+      joined.set(arr, off);
+      off += arr.length;
+    }
+    return new Blob([joined], { type: "video/mp4" });
+  };
+
+  const [seamlessObjectUrl, setSeamlessObjectUrl] = useState<string | null>(null);
+
+  // Main playAll logic: concatenate all segments from selectedSegment index!!
+  const handlePlayAllSegments = async () => {
+    // Find index of selectedSegment among segments in play order
+    const idx = segments.findIndex(
+      (s) => s.key === selectedSegment
+    );
+
+    // Compute real, ordered, play queue: remove placeholders, only URL segments
+    const realSegs = segments.filter((s) => s.type !== "placeholder" && s.url);
+    const startIdx =
+      idx >= 0
+        ? realSegs.findIndex((s) => s.key === segments[idx].key)
+        : 0;
+
+    setPlayAllMode(true);
+    setSeamlessLoading(true);
+    setSeamlessUrl(null);
+    setSeamlessError(null);
+
+    try {
+      const joinedBlob = await joinSegmentsToSingleBlob(segments, startIdx >= 0 ? startIdx : 0);
+      const objURL = URL.createObjectURL(joinedBlob);
+      setSeamlessUrl(objURL);
+      setSeamlessObjectUrl(objURL);
+    } catch (err: any) {
+      setSeamlessError(
+        "Failed to play all segments: " + (err?.message || `${err}`)
+      );
+      setSeamlessUrl(null);
+      setSeamlessObjectUrl(null);
+    }
+    setSeamlessLoading(false);
+  };
+
+  // Cleanup real objectURLs created
+  useEffect(() => {
+    return () => {
+      if (seamlessObjectUrl) {
+        URL.revokeObjectURL(seamlessObjectUrl);
+      }
+    };
+    // eslint-disable-next-line
+  }, [seamlessObjectUrl]);
+
+  const stopPlayAll = () => {
+    setPlayAllMode(false);
+    setSeamlessUrl(null);
+    setSeamlessError(null);
+    setSeamlessLoading(false);
+    seamlessRef.current?.pause();
+    if (seamlessObjectUrl) {
+      URL.revokeObjectURL(seamlessObjectUrl);
+      setSeamlessObjectUrl(null);
+    }
+  };
+
+  // If video changes, stop seamless mode
+  useEffect(() => {
+    stopPlayAll();
+    // eslint-disable-next-line
+  }, [video.id]);
+
+  useEffect(() => {
+    if (seamlessError && playAllMode) stopPlayAll();
+  }, [seamlessError, playAllMode]);
+
   return (
-    <div className="w-full h-full mx-auto px-12">
-      <div className="h-full w-full relative">
-        {/* "Extend" button at the left (start) */}
+    <div className="w-full h-fit mx-auto px-12">
+      <div className="h-fit w-full relative">
+        {/* "Extend" buttons */}
         <PlusCircleButton
           onClick={() => handlePromptOpen("start")}
           label="Extend video at start"
           position="left"
         />
-        {/* "Extend" button at the right (end) */}
         <PlusCircleButton
           onClick={() => handlePromptOpen("end")}
           label="Extend video at end"
           position="right"
         />
-        {/* Video segment viewer */}
-        {displayedSegment && renderSegment(displayedSegment)}
 
-        {/* Loading indicator */}
-        {/* {isLoading && (
+        {/* Seamless play all buffer - single video element overlay */}
+        {playAllMode && (
+          <div className="relative flex items-center justify-center min-h-[315px]">
+            {seamlessLoading && (
+              <div className="flex flex-col items-center w-full h-full justify-center min-h-[220px]">
+                <LoaderIcon className="animate-spin text-blue-400" size={38} />
+                <div className="mt-3 text-blue-600">Preparing seamless playback...</div>
+              </div>
+            )}
+            {!seamlessLoading && seamlessError && (
+              <div className="absolute inset-0 bg-red-50 bg-opacity-90 flex items-center justify-center text-red-500 font-semibold text-lg">
+                {seamlessError}
+              </div>
+            )}
+            {!seamlessLoading && seamlessUrl && (
+              <video
+                key={seamlessUrl}
+                ref={seamlessRef}
+                src={seamlessUrl}
+                className="w-full rounded-lg block"
+                controls
+                autoPlay
+                tabIndex={0}
+                style={{
+                  minHeight: 220,
+                  maxHeight: 380,
+                  background: "#101010",
+                }}
+                onEnded={stopPlayAll}
+              />
+            )}
+            {/* Stop button */}
+            <button
+              className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 opacity-85 hover:bg-red-700"
+              onClick={stopPlayAll}
+              aria-label="Stop playing all"
+              type="button"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {!playAllMode && displayedSegment && renderSegment(displayedSegment)}
+
+        {/* Loading indicator (never overlay in playAll or when seamless is being built) */}
+        {isLoading && !playAllMode && !seamlessLoading && (
           <div
             className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg"
-            style={{ marginTop: 24 }}
+            style={{ marginTop: 24, zIndex: 30 }}
           >
             <div className="text-white text-center">
               <div className="flex items-center gap-2">
@@ -756,8 +842,8 @@ export const MockVideoEditor = ({
               )}
             </div>
           </div>
-        )} */}
-        
+        )}
+
         {/* Extension Prompt Modal */}
         {extensionPromptOpen && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
@@ -824,10 +910,9 @@ export const MockVideoEditor = ({
         )}
       </div>
 
-      {/* Video segments pill-viewer */}
-      {segments.length > 1 && (
+      {(segments.length > 1 || (segments.length === 1 && !playAllMode)) && (
         <div
-          className="flex flex-row items-center mt-5 gap-2 justify-center"
+          className="flex flex-row items-center gap-2 justify-center mt-4"
           aria-label="Video Segments"
         >
           {segments.map((segment, idx) => (
@@ -836,9 +921,36 @@ export const MockVideoEditor = ({
               thumbUrl={segment.thumbUrl || "/images/video-icon.png"}
               type={segment.type === "placeholder" ? "extension" : segment.type}
               selected={selectedSegment === segment.key}
-              onClick={() => setSelectedSegment(segment.key!)}
+              onClick={() => {
+                setSelectedSegment(segment.key);
+                if (playAllMode) stopPlayAll();
+              }}
             />
           ))}
+
+          {/* Play all / Stop button for seamless playback */}
+          {segments.length > 1 && (
+            playAllMode ? (
+              <button
+                className="bg-red-600 text-white font-semibold rounded px-4 py-2 ml-2 shadow hover:bg-red-700 transition"
+                onClick={stopPlayAll}
+                type="button"
+                aria-label="Stop Full Video"
+              >
+                <span className="align-middle">■ Stop</span>
+              </button>
+            ) : (
+              <button
+                className="bg-blue-500 text-white font-semibold rounded px-4 py-2 ml-2 shadow hover:bg-blue-600 transition"
+                onClick={handlePlayAllSegments}
+                disabled={playAllMode || seamlessLoading}
+                type="button"
+                aria-label="Play all segments"
+              >
+                ▶︎ Play Full Video
+              </button>
+            )
+          )}
         </div>
       )}
 
