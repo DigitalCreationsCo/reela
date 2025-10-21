@@ -1,5 +1,5 @@
 import { LoaderIcon } from "lucide-react";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { mockAsyncFetch } from "../custom/mock-chat";
 import { createMockVideo } from "@/lib/mock-utils";
 import { Video } from "@/db/schema";
@@ -231,11 +231,24 @@ export const MockVideoEditor = ({
   // placeholder segment id, updated every extension fetch
   const [extPlaceholderKey, setExtPlaceholderKey] = useState<string | null>(null);
 
+  // For seamless "play all" across segments.
+  const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const [segmentsPlayIndex, setSegmentsPlayIndex] = useState<number | null>(null);
+
   // Compute stream url for main video segment
   const streamUrl = useMemo(
     () => `/api/videos/mock-stream/${fileId}`,
     [fileId]
   );
+
+  // Find usable/ready, non-placeholder segments (for play-all logic)
+  const playableSegments = useMemo(
+    () => segments.filter(segment => segment.type !== "placeholder"),
+    [segments]
+  );
+
+  // Find index of the currently selected segment in non-placeholder array
+  const selectedPlayableIndex = playableSegments.findIndex(seg => seg.key === selectedSegment);
 
   // Reset segments with main video segment when video changes
   useEffect(() => {
@@ -362,6 +375,104 @@ export const MockVideoEditor = ({
     setExtensionPromptValue("");
     setConfirmMsg(null);
   };
+
+  // ---- Play all segments sequentially logic ----
+
+  const clearPlayAll = () => {
+    setIsPlayingAll(false);
+    setSegmentsPlayIndex(null);
+    // pause the player if needed
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
+  };
+
+  // When playing all, on video ended, advance to next segment if any
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    if (!isPlayingAll) return;
+
+    const onVideoEnded = () => {
+      // Move to next segment if possible
+      if (
+        segmentsPlayIndex !== null &&
+        playableSegments.length > 0 &&
+        segmentsPlayIndex + 1 < playableSegments.length
+      ) {
+        const nextIdx = segmentsPlayIndex + 1;
+        setSegmentsPlayIndex(nextIdx);
+      } else {
+        // End of play-all
+        setIsPlayingAll(false);
+        setSegmentsPlayIndex(null);
+      }
+    };
+
+    videoEl.addEventListener("ended", onVideoEnded);
+
+    return () => {
+      videoEl.removeEventListener("ended", onVideoEnded);
+    };
+  }, [isPlayingAll, playableSegments, segmentsPlayIndex]);
+
+  // If playAll is ongoing, whenever segmentsPlayIndex changes, update selectedSegment & src and start playback
+  useEffect(() => {
+    if (isPlayingAll && segmentsPlayIndex !== null && playableSegments[segmentsPlayIndex]) {
+      setSelectedSegment(playableSegments[segmentsPlayIndex].key);
+      // NOTE: next useEffect (below) handles load & play logic. 
+    }
+  }, [isPlayingAll, segmentsPlayIndex, playableSegments]);
+
+  // When selectedSegment changes, if play-all is ongoing, update videoRef's src and play immediately
+  useEffect(() => {
+    if (!isPlayingAll) return;
+    const currentPlayableIdx = playableSegments.findIndex(s => s.key === selectedSegment);
+    // Only trigger on current index (ie, skip programmatic selected changes if not in playAll mode)
+    if (currentPlayableIdx !== segmentsPlayIndex) return;
+    // Only if segment is not a placeholder
+    if (!playableSegments[currentPlayableIdx] || playableSegments[currentPlayableIdx].type === "placeholder") return;
+    const url =
+      playableSegments[currentPlayableIdx].videoData?.uri ||
+      playableSegments[currentPlayableIdx].url ||
+      "";
+    if (!url) return;
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    // Change src and play immediately (for seamless experience)
+    if (videoEl.src !== url) {
+      videoEl.src = url;
+    }
+    // In case in full-screen, do not break full-screen.
+    // Play automatically.
+    // Autoplay: may require handling promise.
+    // The controls, time, etc will remain correct.
+    // Try to play, but ignore error (possibly browser policy)
+    setTimeout(() => {
+      videoEl.play().catch(() => {});
+    }, 10);
+  }, [isPlayingAll, playableSegments, selectedSegment, segmentsPlayIndex]);
+
+
+  // When segments change (e.g. extension added), clear play-all state IF currently playing all and segments changed in a non-trivial way.
+  useEffect(() => {
+    if (!isPlayingAll) return;
+    // If no playable segment at current index (eg, segment replaced or removed), stop playAll
+    if (segmentsPlayIndex !== null && (!playableSegments[segmentsPlayIndex])) {
+      clearPlayAll();
+    }
+  }, [segments, playableSegments, isPlayingAll, segmentsPlayIndex]);
+
+  // "Play All" button click handler
+  const playAllSegments = useCallback(() => {
+    // Find the current selected segment index in playable array
+    const idx = playableSegments.findIndex(s => s.key === selectedSegment);
+    if (idx === -1) return;
+    setIsPlayingAll(true);
+    setSegmentsPlayIndex(idx);
+  }, [playableSegments, selectedSegment]);
 
   // show placeholder in the UI while fetching/generating extension video
   const handleExtensionSubmit = async () => {
@@ -722,6 +833,11 @@ export const MockVideoEditor = ({
     );
   };
 
+  // ---- Unified Play All Video Player ----
+  //
+  // When playAll is active, there is always only a single <video> element (videoRef).
+  // Its src is managed by playAll logic. Fullscreen support is native.
+
   return (
     <div className="w-full h-full mx-auto px-12">
       <div className="h-full w-full relative">
@@ -737,27 +853,87 @@ export const MockVideoEditor = ({
           label="Extend video at end"
           position="right"
         />
-        {/* Video segment viewer */}
-        {displayedSegment && renderSegment(displayedSegment)}
 
-        {/* Loading indicator */}
-        {/* {isLoading && (
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg"
-            style={{ marginTop: 24 }}
-          >
-            <div className="text-white text-center">
-              <div className="flex items-center gap-2">
-                <LoaderIcon className="animate-spin" size={20} />
-                <span className="text-sm font-medium">Loading...</span>
-              </div>
-              {loadProgress > 0 && (
-                <div className="text-sm mt-1">{Math.round(loadProgress)}% buffered</div>
-              )}
-            </div>
+        {/* --- Unified Play All Video Player --- */}
+        <div style={{ position: "relative" }}>
+          <video
+            ref={videoRef}
+            className="w-full h-[340px] object-contain rounded-lg border bg-black"
+            controls
+            style={{
+              minHeight: 220,
+              maxHeight: 380,
+              background: "#111",
+            }}
+            src={
+              (() => {
+                const currentSeg = getSegmentById(selectedSegment);
+                if (!currentSeg || currentSeg.type === "placeholder") return undefined;
+                return currentSeg.videoData?.uri || currentSeg.url || undefined;
+              })()
+            }
+          />
+          <div style={{ position: "absolute", top: 8, right: 12, zIndex: 10, display: "flex", gap: 8 }}>
+            {playableSegments.length > 1 && (
+              <button
+                className={`rounded-full bg-blue-600 text-white font-semibold px-4 py-1 shadow hover:bg-blue-700 focus:outline-none text-sm transition disabled:opacity-40`}
+                type="button"
+                style={{
+                  opacity:
+                    playableSegments.length > 1 &&
+                    selectedPlayableIndex !== -1 &&
+                    !isPlayingAll
+                      ? 1
+                      : 0.5,
+                  pointerEvents:
+                    playableSegments.length > 1 &&
+                    selectedPlayableIndex !== -1 &&
+                    !isPlayingAll
+                      ? "auto"
+                      : "none",
+                }}
+                disabled={
+                  playableSegments.length < 2 ||
+                  selectedPlayableIndex === -1 ||
+                  isPlayingAll
+                }
+                onClick={playAllSegments}
+              >
+                ▶️ Play All
+              </button>
+            )}
+            {/* If currently in PlayAll mode, offer "stop" button */}
+            {isPlayingAll && (
+              <button
+                className="rounded-full bg-gray-300 text-gray-900 px-3 py-1 text-xs font-semibold shadow hover:bg-gray-400 ml-3"
+                type="button"
+                onClick={clearPlayAll}
+              >
+                Stop Play All
+              </button>
+            )}
           </div>
-        )} */}
-        
+          {isPlayingAll && playableSegments[segmentsPlayIndex ?? -1] && (
+            <div
+              style={{
+                position: "absolute",
+                left: 12,
+                top: 10,
+                background: "rgba(31, 41, 55, 0.82)",
+                color: "#fff",
+                padding: "3px 14px",
+                borderRadius: "14px",
+                fontSize: "13px",
+                zIndex: 7,
+                fontWeight: 500,
+              }}
+            >
+              Playing segment {segmentsPlayIndex! + 1} of {playableSegments.length}
+            </div>
+          )}
+        </div>
+        {/* --- End Unified Play All Video Player --- */}
+
         {/* Extension Prompt Modal */}
         {extensionPromptOpen && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
@@ -836,7 +1012,11 @@ export const MockVideoEditor = ({
               thumbUrl={segment.thumbUrl || "/images/video-icon.png"}
               type={segment.type === "placeholder" ? "extension" : segment.type}
               selected={selectedSegment === segment.key}
-              onClick={() => setSelectedSegment(segment.key!)}
+              onClick={() => {
+                setSelectedSegment(segment.key!);
+                // Stop playAll if a segment is clicked
+                clearPlayAll();
+              }}
             />
           ))}
         </div>
