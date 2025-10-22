@@ -1,10 +1,10 @@
-import { LoaderIcon, SaveIcon, LogInIcon, TrashIcon, DownloadIcon } from "lucide-react";
+import { LoaderIcon, TrashIcon, DownloadIcon } from "lucide-react";
 import { Session } from "next-auth";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Video } from "@/db/schema";
 
-export const VideoInfo = ({ video, session }: { video: Video, session: Session | null }) => {
+export const VideoInfo = ({ fetchFn, video, session }: { fetchFn: any, video: Video, session: Session | null }) => {
     const [collapsed, setCollapsed] = useState(true);
     const [isDownloading, setIsDownloading] = useState(false);
     
@@ -21,44 +21,38 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
 
 
     const handleDeleteVideo = useCallback((videoId: string) => {
-    //     if (onDeleteVideo) {
-    //       onDeleteVideo(videoId);
-    //     }
-    //   }, [onDeleteVideo]);
-    
-    //   if (videos.length === 0) {
-    //     return null;
+        //     if (onDeleteVideo) {
+        //       onDeleteVideo(videoId);
+        //     }
+        //   }, [onDeleteVideo]);
+        
+        //   if (videos.length === 0) {
+        //     return null;
     }, []);
 
     const handleDownload = async () => {
         setIsDownloading(true);
         try {
-            // Fetch the video from your streaming endpoint
-            const response = await fetch(`/api/videos/stream/${video.fileId}`);
+            const response = await fetchFn(`/api/videos/stream/${video.fileId}`);
             
             if (!response.ok) {
                 throw new Error('Failed to download video');
             }
 
-            // Get the blob
             const blob = await response.blob();
             
-            // Create a download link
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             
-            // Generate filename
             const fileName = title 
                 ? `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`
                 : `video_${video.fileId}.mp4`;
             a.download = fileName;
             
-            // Trigger download
             document.body.appendChild(a);
             a.click();
             
-            // Cleanup
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
@@ -71,7 +65,6 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
 
     return (
         <div className={`p-4 space-y-4 ${collapsed && 'cursor-pointer'}`} onClick={(e) => { e.stopPropagation();setCollapsed(false); }}>
-        {/* Collapsed (summary) version shows key info only */}
         <div className="rounded-lg flex flex-col gap-2">
             
             <div className="text-lg font-medium text-foreground">{title}</div>
@@ -100,7 +93,6 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                 <div>{genre}</div>
             </div>
         </div>
-        {/* Expanded view (show rest of info) */}
         {!collapsed && (
             <>
             <div className="flex flex-col grid gap-2 sm:grid-cols-2 text-xs text-muted-foreground pt-2 sm:pt-0">
@@ -114,13 +106,13 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                     <span>{video.format}</span>
                 </div>
                 )}
-                {video.duration && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Duration:</span>
                     <span>{video.duration}</span>
                 </div>
                 )}
-                {video.fileSize && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Size:</span>
                     <span>{(typeof video.fileSize === "number" 
@@ -128,13 +120,13 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                     : video.fileSize) }</span>
                 </div>
                 )}
-                {video.status && (
+                {(
                 <div className="flex items-center gap-1 text-xs">
                     <span className="font-medium">Status:</span>
                     <span>{video.status}</span>
                 </div>
                 )}
-                {video.updatedAt && (
+                {(
                 <div className="flex items-center gap-1">
                     <span className="font-medium">Updated </span>
                     <span>
@@ -180,7 +172,7 @@ export const VideoInfo = ({ video, session }: { video: Video, session: Session |
                         <Button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteVideo(video.id);
+                            handleDeleteVideo("");
                         }}
                         variant="outline"
                         size="sm"

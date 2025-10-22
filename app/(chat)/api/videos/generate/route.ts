@@ -121,9 +121,8 @@ export async function POST(request: Request) {
     //     { status: 401 }
     //   );
     // }
-    
-    // Validate request data
-    if (!messages || messages.length === 0 || !messages[0]?.content) {
+
+    if (!messages || !messages.length || !messages[messages.length - 1]?.content) {
       return NextResponse.json(
         { 
           error: 'Invalid request: prompt is required',
@@ -147,7 +146,7 @@ export async function POST(request: Request) {
             // model: 'veo-3.0-fast-generate-001',
             model: 'veo-2.0-generate-001',
             source: {
-              prompt: messages[0].content,
+              prompt: messages[messages.length -1].content,
             },
             config: {
               numberOfVideos: 1,

@@ -12,12 +12,19 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
     }
   }, []);
 
-  const generate = useCallback(async (prompt: string, onEvent?: OnEvent) => {
+  const generate = useCallback(async (id: string, prompt: string, onEvent?: OnEvent) => {
     const controller = new AbortController();
     controllerRef.current = controller;
     try {
       onEvent?.({ type: 'status', payload: 'initiating' });
-      const res = await fetchFn('/api/videos/generate', { method: 'POST', signal: controller.signal, body: JSON.stringify({ prompt }) });
+      const res = await fetchFn('/api/videos/generate', { 
+        method: 'POST', 
+        signal: controller.signal,
+        body: JSON.stringify({
+          id,
+          messages: [{ role: 'user', content: prompt }],
+        })
+      });
       if (!res.ok) {
         const txt = await (res.text ? res.text() : Promise.resolve('error'));
         onEvent?.({ type: 'error', payload: txt });

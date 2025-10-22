@@ -149,3 +149,66 @@ export const generationStatusMessage = (status: string): string => {
     default: return "";
   }
 };
+
+// Util: get the frame as JPEG dataURL from a video URL
+export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" = "start"): Promise<{ dataUrl: string; blob: Blob }> {
+  return new Promise((resolve, reject) => {
+    const videoEl = document.createElement("video");
+    videoEl.src = videoUrl;
+    videoEl.crossOrigin = "anonymous";
+    videoEl.preload = "auto";
+    videoEl.muted = true;
+    let settled = false;
+
+    const cleanup = () => {
+      videoEl.pause();
+      videoEl.src = "";
+      videoEl.remove();
+    };
+
+    const handleSeeked = async () => {
+      if (settled) return;
+      settled = true;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("No 2D context");
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+        const blob = await (await fetch(dataUrl)).blob();
+        cleanup();
+        resolve({ dataUrl, blob });
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    };
+
+    videoEl.addEventListener("loadedmetadata", () => {
+      let seekTime = at === "start" ? 0 : Math.max(videoEl.duration - 0.05, 0);
+      if (!isFinite(seekTime) || isNaN(seekTime)) seekTime = 0;
+      videoEl.currentTime = seekTime;
+    });
+
+    videoEl.addEventListener("seeked", handleSeeked);
+
+    videoEl.addEventListener("error", () => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("Unable to load video for frame extraction"));
+      }
+    });
+
+    // Fallback timeout for extraction
+    setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("Timeout extracting frame"));
+      }
+    }, 8000);
+  });
+}

@@ -1,20 +1,18 @@
 "use client";
 
-import { Message as PreviewMessage } from "@/components/custom/message"
 import { Attachment, Message } from "ai";
 import { useScrollToBottom } from "@/components/custom/use-scroll-to-bottom";
 import { MultimodalInput } from "./multimodal-input";
 import { Overview } from "./overview";
 import { Session } from "next-auth";
-import { useEffect, useState } from "react";
-import { Video } from "@/db/schema";
-import { File } from "@google/genai";
+import { useCallback, useEffect, useState } from "react";
 import { VideoReel } from "../video/reel";
-import { SAMPLE_VIDEOS } from "@/lib/sample/sample_videos";
+import { Video } from "@/db/schema";
+import { useVideoState } from "@/hooks/useVideoState";
+import { useVideoGenerator } from "@/hooks/useVideoGenerator";
+import { mockAsyncFetch } from "@/lib/mock-async-fetch";
 
-type VideoGenerationStatus = 'idle' | 'initiating' | 'generating' | 'retrieving' | 'ready' | 'downloading' | 'complete' | 'error';
-
-export function Chat({
+export function MockChat({
   id,
   initialMessages,
   session,
@@ -23,203 +21,86 @@ export function Chat({
   initialMessages: Array<Message>;
   session: Session | null;
 }) {
-  const append =(message: any) => {
-    setMessages(prev => [...prev, message]);
-  };
-  const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
-  const [videos, setVideos] = useState<Video[]>(SAMPLE_VIDEOS);
+  const [messages, setMessages] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-  const [messagesContainerRef, messagesEndRef] = useScrollToBottom<HTMLDivElement>();
-  const [videoError, setVideoError] = useState<string>('');
 
-  const [generationStatus, setGenerationStatus] = useState<VideoGenerationStatus>('idle');
-  const [progress, setProgress] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const { state, actions } = useVideoState();
+  const { videos, generationStatus, progress, isGenerating } = state;
+  const { setStatus, setProgress, setError, setIsGenerating } = actions;
 
-  // Check if user has reached video limit
-  const hasReachedLimit = !session?.user && videos.length >= 1;
+  const fetchFn = process.env.NODE_ENV === "development" ? mockAsyncFetch : fetch;
 
-  // const saveVideo = async () => {
-  //   if (!session?.user) return;
-    
-  //   setIsSaving(true);
-  //   try {
-  //     const response = await fetch('/api/videos', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify({
-  //         videoUrl: video,
-  //         prompt: messages[messages.length - 1]?.content,
-  //         chatId: id,
-  //       }),
-  //     });
+  const { generate, abort } = useVideoGenerator({ fetchFn });
 
-  //     if (response.ok) {
-  //       setIsSaved(true);
-  //     } else {
-  //       console.error('Failed to save video');
-  //     }
-  //   } catch (error) {
-  //     console.error('Error saving video:', error);
-  //   } finally {
-  //     setIsSaving(false);
-  //   }
-  // };
+  const append = useCallback((m: any) => setMessages(prev => [...prev, m]), []);
 
-  useEffect(() => {
-    console.log('Video state changed:',);
-    console.log('video ', videos[videos.length -1]);
-  }, [videos]);
-  
-  const stop = () => {
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-    }
-    setIsGenerating(false);
-    setGenerationStatus('idle');
-    setProgress(0);
-    setVideoError('');
-  };
-
-  const handleVideoGeneration = async (prompt: string) => {
+  const handleGenerateVideo = useCallback(async (prompt: string) => {
     setIsGenerating(true);
-    setGenerationStatus('initiating');
+    setStatus('initiating');
     setProgress(0);
-    setVideoError('');
+    setError(null);
 
-    const controller = new AbortController();
-    setAbortController(controller);
-
-    try {
-      const response = await fetch('/api/videos/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start video generation');
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) {
-        throw new Error('No response body');
-      }
-
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data: { 
-              status: VideoGenerationStatus;
-              progress: number;
-              video: File;
-              error?: any;
-            } = JSON.parse(line.slice(6));
-            
-            if (data.status) {
-              setGenerationStatus(data.status);
-            }
-            
-            if (data.progress !== undefined) {
-              setProgress(data.progress);
-            }
-
-            if (data.status === 'complete' && data.video) {
-              setGenerationStatus('downloading');
-              setProgress(95);
-
-              const { uri, downloadUri, name, displayName, createTime, sizeBytes } = data.video;
-              console.log('Chat - Received video data:', { uri, downloadUri, name, createTime });
-
-              const fileId = name!.replace('files/', '');
-              console.log('Chat - Extracted fileId:', fileId);
-
-              const newVideo = new Video({
-                uri: uri!,
-                fileId,
-                downloadUri: downloadUri || null,
-                prompt,
-                author: session?.user?.name || 'Anonymous',
-                userId: session?.user?.id || 'anonymous', 
-                format: 'mp4',
-                fileSize: Number(sizeBytes),
-                status: 'ready',
-                createdAt: new Date(createTime!)
-              })
-
-              console.log('Chat - Created new Video object:', newVideo);
-              console.log('Chat - newVideo.fileId:', newVideo.fileId);
-
-              setVideos((prev) => {
-                const updated = [...prev, newVideo];
-                console.log('Chat - Updated videos array:', updated);
-                return updated;
-              });
-
-              setProgress(100);
-              setGenerationStatus('complete');
-              setIsGenerating(false);
-              setAbortController(null);
-            }
-
-            if (data.status === 'error') {
-              setVideoError(data.error || 'An error occurred');
-              setIsGenerating(false);
-              setAbortController(null); 
-            }
-          }
+    await generate(id,prompt, (evt) => {
+      switch (evt.type) {
+        case 'status':
+          actions.setStatus(evt.payload as any);
+          break;
+        case 'progress':
+          actions.setProgress(evt.payload as number);
+          break;
+        case 'complete': {
+          const video = evt.payload;
+          const item = new Video({
+            uri: video.uri,
+            fileId: (video.name || '').replace('files/', ''),
+            downloadUri: video.downloadUri || null,
+            prompt,
+            author: session?.user?.name || 'Anonymous',
+            userId: session?.user?.id || 'anonymous',
+            format: 'mp4',
+            fileSize: Number(video.sizeBytes || 0),
+            status: 'ready' as const,
+            createdAt: video.createTime ? new Date(video.createTime) : new Date()
+          });
+          actions.addVideo(item);
+          actions.setProgress(100);
+          actions.setStatus('complete');
+          actions.setIsGenerating(false);
+          break;
         }
+        case 'error':
+          actions.setError(evt.payload ?? 'Error');
+          actions.setIsGenerating(false);
+          actions.setStatus('error');
+          break;
+        case 'aborted':
+          actions.setError('Generation aborted');
+          actions.setIsGenerating(false);
+          actions.setStatus('idle');
+          break;
       }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.log('Video generation aborted by user');
-        setVideoError('Video generation cancelled');
-      } else {
-        console.error('Error:', error);
-        setVideoError(error instanceof Error ? error.message : 'Unknown error');
-      }
-      setIsGenerating(false);
-      setGenerationStatus('error');
-      setAbortController(null);
-    }
-  };
-  
-  const handleSubmit = async (e: React.FormEvent) => {
-    console.log('customHandleSubmit event: ', e);
+    });
+  }, [actions, generate, session]);
 
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return;
+    const content = input.trim();
+    if (!content) {
+      return;
+    }
 
-    const prompt = input;
-    setInput('');
-    
     append({
       role: 'user',
-      content: prompt,
+      content,
     });
+    setInput('');
+    await handleGenerateVideo(content);
+  }, [input, handleGenerateVideo, append]);
 
-    await handleVideoGeneration(prompt);
-  };
+  const stop = useCallback(() => {
+    abort();
+  }, [abort]);
 
   return (
     <div className="flex flex-col h-[92vh] justify-center bg-background">
@@ -229,38 +110,18 @@ export function Chat({
           <div className="flex-1 flex items-center justify-center h-200">
             <Overview />
           </div>
-        )}
+        ) || null}
 
-        <div className="flex-1">
-          <VideoReel 
-            videos={videos} 
-            session={session} 
-            isGenerating={isGenerating} 
-            generationStatus={generationStatus}
-            progress={progress}
-            />
-        </div>
-        {/* {messages.length > 0 && !videos.length && !isGenerating && (
-          <div
-            ref={messagesContainerRef}
-            className="flex-1 flex flex-col gap-4 overflow-y-auto px-4 py-2"
-          >
-            {messages.map((message) => (
-              <PreviewMessage
-                key={message.id}
-                chatId={id}
-                role={message.role}
-                content={message.content}
-                attachments={message.experimental_attachments}
-                toolInvocations={message.toolInvocations}
-              />
-            ))}
-            <div
-              ref={messagesEndRef}
-              className="shrink-0 min-h-[24px]"
-            />
-          </div>
-        )} */}
+        <VideoReel 
+          videos={videos} 
+          session={session} 
+          isGenerating={isGenerating} 
+          generationStatus={generationStatus}
+          progress={progress}
+          onPlay={(v) => { console.log('play', v); }}
+          onDownload={(v) => { console.log('download', v); }}
+          fetchFn={fetchFn}
+          />
 
         <div className="p-4">
           <form 
@@ -283,4 +144,4 @@ export function Chat({
       </div>
     </div>
   );
-}
+};

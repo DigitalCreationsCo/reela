@@ -1,4 +1,4 @@
-import { MockChat } from "@/components/custom/mock-chat";
+import { MockChat } from "@/components/custom/chat";
 import VideoCollage from "@/components/video/collage";
 import { generateUUID } from "@/lib/utils";
 import { auth } from "../../../auth";
