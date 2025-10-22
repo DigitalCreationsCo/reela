@@ -1,47 +1,8 @@
 import { LoaderIcon } from "lucide-react";
-import { useState, useRef, useEffect, useMemo } from "react";
-import { mockAsyncFetch } from "../custom/mock-chat";
-import { createMockVideo } from "@/lib/mock-utils";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { mockAsyncFetch } from "@/lib/mockAsyncFetch";
 import { Video } from "@/db/schema";
-
-// Simple Plus Icon SVG
-const PlusCircleButton = ({
-  onClick,
-  label,
-  position = "left",
-  disabled = false,
-}: {
-  onClick: () => void;
-  label: string;
-  position?: "left" | "right";
-  disabled?: boolean;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    aria-label={label}
-    className={`absolute top-1/2 z-10 transform -translate-y-1/2 bg-background border border-gray-300 shadow transition hover:bg-blue-100 active:scale-95 
-      ${position === "left" ? "-left-10" : "-right-10"}
-      rounded-full p-2 flex items-center justify-center`}
-    style={{
-      pointerEvents: disabled ? "none" : "auto",
-      opacity: disabled ? 0.4 : 1,
-    }}
-  >
-    <svg
-      className="w-7 h-7 text-blue-600"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.25}
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="11" stroke="currentColor" fill="white" />
-      <path strokeLinecap="round" d="M12 8v8M8 12h8" />
-    </svg>
-  </button>
-);
+import { PlusButton } from "../ui/plus-button";
 
 const VideoSegmentPill = ({
   thumbUrl,
@@ -187,65 +148,46 @@ const ExtensionSegmentPlaceholder = ({
   </div>
 );
 
-export const MockVideoEditor = ({
-  video,
-  videoError,
-  setVideoError,
-}: {
-  video: Video;
-  videoError: string;
-  setVideoError: any;
-}) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  const { fileId } = video;
-  // "Segment" now is an object with possible placeholder
   type Segment = {
     key: string;
     url?: string;
     type: "main" | "extension" | "placeholder";
     thumbUrl?: string;
     label: string;
-    videoData?: Video; // Now store Video for segment
+    videoData?: Video; 
     isPlaceholder?: boolean;
     progress?: number;
     side?: "start" | "end";
-    placeholderComponent?: JSX.Element; // Store placeholder for placeholder segments
+    placeholderComponent?: JSX.Element; 
   };
 
+export const MockVideoEditor = ({
+  video,
+}: {
+  video: Video;
+}) => {
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("main");
 
-  // Modal UI state/handlers
   const [extensionPromptOpen, setExtensionPromptOpen] = useState<null | "start" | "end">(null);
   const [extensionPromptValue, setExtensionPromptValue] = useState("");
   const [extensionLoading, setExtensionLoading] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
-  // Extension streaming state
   const [streamProgress, setStreamProgress] = useState<number>(0);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0);
-
-  // placeholder segment id, updated every extension fetch
   const [extPlaceholderKey, setExtPlaceholderKey] = useState<string | null>(null);
 
-  // Compute stream url for main video segment
-  const streamUrl = useMemo(
-    () => `/api/videos/mock-stream/${fileId}`,
-    [fileId]
-  );
+  const streamUrl = useMemo(() => `/api/videos/mock-stream/${video.fileId}`, [video.fileId]);
 
-  // Reset segments with main video segment when video changes
   useEffect(() => {
     let ignore = false;
     setSegments([]);
     setSelectedSegment("main");
-    setIsLoading(true);
-    setLoadProgress(0);
+    setVideoError(null);
 
-    // Get main segment thumb
     (async () => {
       try {
         await new Promise((resolve) => {
@@ -257,6 +199,7 @@ export const MockVideoEditor = ({
           preloadVideo.onerror = resolve;
         });
       } catch {}
+
       let thumbUrl = "";
       try {
         const { dataUrl } = await extractFrameDataUrl(streamUrl, "start");
@@ -282,41 +225,35 @@ export const MockVideoEditor = ({
     return () => {
       ignore = true;
     };
-    // Adding `video` as dependency since it's part of main segment.
-  }, [streamUrl, fileId, video]);
+  }, [streamUrl, video]);
 
-  // Video loading status (update to fix initial loading bug)
   useEffect(() => {
-    setIsLoading(true);
-    setLoadProgress(0);
-
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
+    let mounted = true;
     const handleProgress = () => {
-      if (videoElement.buffered.length > 0) {
-        const bufferedEnd = videoElement.buffered.end(videoElement.buffered.length - 1);
-        const duration = videoElement.duration;
-        if (duration > 0 && bufferedEnd <= duration * 1.01) {
-          setLoadProgress((bufferedEnd / duration) * 100);
+      try {
+        if (videoElement.buffered.length > 0) {
+          const bufferedEnd = videoElement.buffered.end(videoElement.buffered.length - 1);
+          const duration = videoElement.duration || 1;
+          const pct = Math.min(100, (bufferedEnd / duration) * 100);
         }
-      }
+      } catch {}
     };
 
     const handleLoadStart = () => {
-      setIsLoading(true);
+      if (!mounted) return
       setVideoError('');
     };
 
     const handleCanPlay = () => {
-      setIsLoading(false);
+      if (!mounted) return
     };
 
     const handleError = (e: Event) => {
       const target = e.currentTarget as HTMLVideoElement;
-      setIsLoading(false);
-
-      let errorMessage = 'Unknown error occurred';
+      let errorMessage = 'Unknown video error';
       if (target.error) {
         switch (target.error.code) {
           case MediaError.MEDIA_ERR_ABORTED:
@@ -332,7 +269,7 @@ export const MockVideoEditor = ({
             errorMessage = 'Video format not supported by your browser';
             break;
           default:
-            errorMessage = target.error.message || 'Unknown error occurred';
+            errorMessage = target.error.message || errorMessage;
         }
       }
       setVideoError(`Error loading video: ${errorMessage}`);
@@ -343,19 +280,14 @@ export const MockVideoEditor = ({
     videoElement.addEventListener('canplay', handleCanPlay);
     videoElement.addEventListener('error', handleError);
 
-    // If video is already loaded (fixes initial no-loading bug)
-    if (videoElement.readyState >= 3) {
-      setIsLoading(false);
-      setLoadProgress(100);
-    }
-
     return () => {
+      mounted = false;
       videoElement.removeEventListener('progress', handleProgress);
       videoElement.removeEventListener('loadstart', handleLoadStart);
       videoElement.removeEventListener('canplay', handleCanPlay);
       videoElement.removeEventListener('error', handleError);
     };
-  }, [setVideoError, selectedSegment, segments]);
+  }, [selectedSegment, segments]);
 
   const handlePromptOpen = (side: "start" | "end") => {
     setExtensionPromptOpen(side);
@@ -363,17 +295,61 @@ export const MockVideoEditor = ({
     setConfirmMsg(null);
   };
 
-  // show placeholder in the UI while fetching/generating extension video
-  const handleExtensionSubmit = async () => {
+  const streamExtensionVideo = useCallback(async (
+    url: string,
+    onProgress: (value: number) => void,
+    signal?: AbortSignal,
+  ): Promise<Blob> => {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Failed to fetch extension video stream");
+
+    const contentLength = resp.headers?.get("Content-Length") || Number("0");
+    const total = contentLength ? Number(contentLength) : undefined;
+    const reader = resp.body?.getReader();
+    if (!reader) throw new Error("Failed to get stream reader from response");
+
+    const chunks = [];
+    let receivedLength = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+        chunks.push(chunk);
+        receivedLength += chunk.length ?? chunk.byteLength ?? 0;
+        if (total) {
+          onProgress(Math.floor((receivedLength / total) * 100));
+        } else {
+          onProgress(Math.min(99, receivedLength / 1024));
+        }
+      }
+    }
+
+    onProgress(100);
+
+    let length = 0;
+    for (const c of chunks) length += c.byteLength;
+    const all = new Uint8Array(length);
+    let offset = 0;
+    for (const c of chunks) {
+      all.set(c, offset);
+      offset += c.byteLength;
+    }
+
+    return new Blob([all], { type: "video/mp4" });
+  }, []);
+
+  const handleExtensionSubmit = useCallback(async () => {
+    if (!extensionPromptOpen) return;
     setExtensionLoading(true);
     setConfirmMsg(null);
     setStreamProgress(0);
 
-    // Generate a unique placeholder key per extension request
     const placeholderKey = `extension-placeholder-${Date.now()}`;
     setExtPlaceholderKey(placeholderKey);
 
-    let placeholderSegment: Segment = {
+    const placeholderSegment: Segment = {
       key: placeholderKey,
       type: "placeholder",
       isPlaceholder: true,
@@ -389,7 +365,6 @@ export const MockVideoEditor = ({
       progress: 0,
     };
 
-    // Insert placeholder in UI immediately
     setSegments((prev) => {
       if (extensionPromptOpen === "start") {
         return [placeholderSegment, ...prev];
@@ -397,30 +372,25 @@ export const MockVideoEditor = ({
         return [...prev, placeholderSegment];
       }
     });
-    // Select the placeholder
     setSelectedSegment(placeholderKey);
 
     try {
-      // Get the main segment reference
-      const mainSegment = segments.find((s) => s.type === "main");
-      if (!mainSegment) throw new Error("Main video segment missing");
+      const currentSegment = segments.find((s) => s.key === selectedSegment);
+      if (!currentSegment) throw new Error("Selected video segment not found");
+      
+      const segmentUrl = currentSegment.url!;
 
-      const mainUrlToUse = mainSegment.url!;
-
-      // 1. Extract frame
-      const { dataUrl, blob: frameBlob } = await extractFrameDataUrl(
-        mainUrlToUse,
+      const { blob: frameBlob } = await extractFrameDataUrl(
+        segmentUrl,
         extensionPromptOpen === "start" ? "start" : "end"
       );
 
-      // 2. Build form data
       const formData = new FormData();
       formData.append("prompt", extensionPromptValue);
       formData.append("referenceFrame", frameBlob, "frame.jpg");
       formData.append("side", extensionPromptOpen as "start" | "end");
-      formData.append("videoId", fileId);
+      formData.append("videoId", video.fileId);
 
-      // 3. POST to API to initiate extension generation (stream progress/events)
       const resp = await mockAsyncFetch("/api/videos/generate/extend", {
         method: "POST",
         body: formData,
@@ -437,18 +407,13 @@ export const MockVideoEditor = ({
         throw new Error(apiErrorMsg);
       }
 
-      // Progressively parse the /api/videos/generate/extend stream just like mockAsyncFetch in mock-chat.tsx
-      let newFileId: string | undefined = undefined;
-      let resultObj: any = undefined;
-      let progressFromEvent = 0;
-      let gotComplete = false;
-
-      const reader = resp.body && resp.body.getReader ? resp.body.getReader() : undefined;
+      const reader = resp.body?.getReader?.();
       const decoder = new TextDecoder();
+      if (!reader) throw new Error("No response body from extension request");
 
-      if (!reader) {
-        throw new Error("No response body from extension request");
-      }
+      let newFileId: string | undefined = undefined;
+      let gotComplete = false;
+      let progressFromEvent = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -457,53 +422,50 @@ export const MockVideoEditor = ({
         const lines = chunk.split('\n');
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            let data: any;
             try {
+              let data: any;
               data = JSON.parse(line.slice(6));
-            } catch (e) {
-              continue;
-            }
-            // Handle error event
-            if (data.status === "error") {
-              throw new Error(data.error || "Extension generation failed");
-            }
-            // Update progress UI for any step with .progress
-            if (typeof data.progress === "number") {
-              progressFromEvent = data.progress;
-              setStreamProgress(progressFromEvent);
+              if (typeof data.progress === "number") {
+                progressFromEvent = data.progress;
+                setStreamProgress(progressFromEvent);
+                setSegments((prev) =>
+                  prev.map((seg) =>
+                    seg.key === placeholderKey
+                      ? {
+                          ...seg,
+                          progress: progressFromEvent,
+                          placeholderComponent: (
+                            <ExtensionSegmentPlaceholder
+                              side={extensionPromptOpen!}
+                              message={`Extending video at the ${extensionPromptOpen === "start" ? "start" : "end"}...`}
+                              progress={progressFromEvent}
+                            />
+                          ),
+                        }
+                      : seg
+                  )
+                );
+              }
 
-              setSegments((prev) =>
-                prev.map((seg) =>
-                  seg.key === placeholderKey
-                    ? {
-                        ...seg,
-                        progress: progressFromEvent,
-                        placeholderComponent: (
-                          <ExtensionSegmentPlaceholder
-                            side={extensionPromptOpen!}
-                            message={`Extending video at the ${extensionPromptOpen === "start" ? "start" : "end"}...`}
-                            progress={progressFromEvent}
-                          />
-                        ),
-                      }
-                    : seg
-                )
-              );
-            }
+              if (
+                data.status === "complete" &&
+                data.video
+              ) {
+                const nameOrFildId = data.video.name ?? data.video.fildId;
+                if (typeof nameOrFildId === "string" && nameOrFildId.length > 0) {
+                  newFileId = nameOrFildId.startsWith("files/") ? nameOrFildId.replace(/^files\//, "") : nameOrFildId;
+                  gotComplete = true;
+                  break;
+                } else {
+                  throw new Error("Extension generation complete, but video file ID missing or invalid");
+                }
+              }
 
-            // On final success event
-            if (
-              data.status === "complete" &&
-              data.video &&
-              (typeof data.video.name === "string" || typeof data.video.fileId === "string")
-            ) {
-              resultObj = data.video;
-              // Use .name if present, else .fileId
-              newFileId = (typeof data.video.name === "string" && data.video.name)
-                ? (data.video.name.startsWith("files/") ? data.video.name.replace(/^files\//, "") : data.video.name)
-                : (data.video.fileId ?? undefined);
-              gotComplete = true;
-              break;
+              if (data.status === "error") {
+                throw new Error(data.error || "Extension generation failed");
+              }
+            } catch (error) {
+              console.warn("Failed to parse SSE line", e);
             }
           }
         }
@@ -514,60 +476,35 @@ export const MockVideoEditor = ({
         throw new Error("No fileId returned from API extension stream");
       }
 
-      // 4. Stream the generated video with progress updates
-      setStreamProgress(progressFromEvent || 0);
-      // update the placeholder as the video streams!
-      let currProgress = progressFromEvent || 0;
       const updateUIProgress = (p: number) => {
-        currProgress = p;
         setStreamProgress(p);
-        setSegments((prev) =>
-          prev.map((seg) =>
-            seg.key === placeholderKey
-              ? {
-                  ...seg,
-                  progress: p,
-                  placeholderComponent: (
-                    <ExtensionSegmentPlaceholder
-                      side={extensionPromptOpen!}
-                      message={`Extending video at the ${extensionPromptOpen === "start" ? "start" : "end"}...`}
-                      progress={p}
-                    />
-                  ),
-                }
-              : seg
-          )
-        );
-      };
+        setSegments((prev) => prev.map((s) => s.key === placeholderKey ? { ...s, progress: p, placeholderComponent: <ExtensionSegmentPlaceholder side={extensionPromptOpen!} progress={p} message={`Extending video at the ${extensionPromptOpen === "start" ? "start" : "end"}...`} /> } : s));
+      }
 
-      const newVideoBlob = await (async () => {
-        // Wrap with a race to ensure progress stays in UI if streaming is fast
+      let abortController = new AbortController();
+      // let currProgress = progressFromEvent || 0;
+      const newBlob = await (async () => {
         let finished = false;
         const blobPromise = streamExtensionVideo(
           `/api/videos/mock-stream/${newFileId}`,
-          updateUIProgress
+          updateUIProgress,
+          abortController.signal,
         ).then((blob) => {
           finished = true;
           updateUIProgress(100);
           return blob;
         });
 
-        // Artificially delay for UI in superfast test environments, so placeholder is visible
         await Promise.race([
           blobPromise,
-          new Promise((r) => setTimeout(r, 700)),
+          new Promise((r) => setTimeout(r, 400)),
         ]);
 
         return blobPromise;
       })();
 
-      setStreamProgress(100);
-
-      // 5. Create video segment URL
-      const newSegmentUrl = URL.createObjectURL(newVideoBlob);
-
-      // 6. Get extension thumbnail
-      let extThumb: string = "";
+      const newSegmentUrl = URL.createObjectURL(newBlob);
+      let extThumb = "";
       try {
         const { dataUrl: thumb } = await extractFrameDataUrl(newSegmentUrl, "start");
         extThumb = thumb;
@@ -576,19 +513,14 @@ export const MockVideoEditor = ({
         extThumb = "";
       }
 
-      // 7. Create the new video object (Video type)
       const newVideoObj = {
         id: `mock-${Date.now()}`,
         uri: newSegmentUrl,
-        // Fill in any other needed Video fields
-        // : `Extension ${extensionPromptOpen === "start" ? "Start" : "End"}`,
         createdAt: new Date(),
-        // Add more fields if your Video type requires
       } as Video;
 
-      // 8. Replace the placeholder with the new extension segment
       const newSegmentId = `extension-${Date.now()}`;
-      const extSegment: Segment = {
+      const newSegment: Segment = {
         key: newSegmentId,
         url: newSegmentUrl,
         type: "extension",
@@ -600,11 +532,10 @@ export const MockVideoEditor = ({
       };
 
       setSegments((prev) =>
-        prev.map((s) => (s.key === placeholderKey ? extSegment : s))
+        prev.map((s) => (s.key === placeholderKey ? newSegment : s))
       );
-
       setSelectedSegment(newSegmentId);
-
+      setStreamProgress(100);
       setConfirmMsg(
         extensionPromptOpen === "start"
           ? "Video extended at the start!"
@@ -625,58 +556,7 @@ export const MockVideoEditor = ({
       setStreamProgress(0);
       setExtPlaceholderKey(null);
     }
-  };
-
-  const streamExtensionVideo = async (
-    url: string,
-    onProgress: (value: number) => void
-  ): Promise<Blob> => {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Failed to fetch extension video stream");
-
-    const contentLength = Number("0");
-    const total = contentLength > 0 ? contentLength : undefined;
-    const reader = resp.body?.getReader();
-    if (!reader) throw new Error("Failed to get stream reader from response");
-
-    let receivedLength = 0;
-    const chunks = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        receivedLength += value.length ?? value.byteLength ?? 0;
-        if (total) {
-          onProgress(Math.floor((receivedLength / total) * 100));
-        } else {
-          // Unknown total, just incrementally bump (never hits 100)
-          onProgress(Math.min(99, receivedLength / 1024));
-        }
-      }
-    }
-
-    onProgress(100);
-
-    // Merge all Uint8Array chunks
-    let all: Uint8Array;
-    if (chunks.length === 1) {
-      all = chunks[0];
-    } else {
-      let len = 0;
-      for (const c of chunks) len += c.length ?? c.byteLength ?? 0;
-      all = new Uint8Array(len);
-      let pos = 0;
-      for (const c of chunks) {
-        all.set(c, pos);
-        pos += c.length ?? c.byteLength ?? 0;
-      }
-    }
-
-    // Type is video/mp4 (stream/endpoint contract)
-    return new Blob([all], { type: "video/mp4" });
-  };
+  }, [extensionPromptOpen, extensionPromptValue, segments, streamExtensionVideo, video.fileId]);
 
   const handlePromptClose = () => {
     setExtensionPromptOpen(null);
@@ -689,7 +569,6 @@ export const MockVideoEditor = ({
   const getSegmentById = (id: string) => segments.find((s) => s.key === id);
   const displayedSegment = getSegmentById(selectedSegment) || segments[0];
 
-  // Renders a segment's content (either renders a placeholder for placeholders, otherwise a <video> player using url from Video)
   const renderSegment = (segment: Segment) => {
     if (!segment) return null;
     if (segment.type === "placeholder" && segment.placeholderComponent)
@@ -725,40 +604,19 @@ export const MockVideoEditor = ({
   return (
     <div className="w-full h-full mx-auto px-12">
       <div className="h-full w-full relative">
-        {/* "Extend" button at the left (start) */}
-        <PlusCircleButton
+        <PlusButton
           onClick={() => handlePromptOpen("start")}
           label="Extend video at start"
           position="left"
         />
-        {/* "Extend" button at the right (end) */}
-        <PlusCircleButton
+        <PlusButton
           onClick={() => handlePromptOpen("end")}
           label="Extend video at end"
           position="right"
         />
-        {/* Video segment viewer */}
+
         {displayedSegment && renderSegment(displayedSegment)}
 
-        {/* Loading indicator */}
-        {/* {isLoading && (
-          <div
-            className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg"
-            style={{ marginTop: 24 }}
-          >
-            <div className="text-white text-center">
-              <div className="flex items-center gap-2">
-                <LoaderIcon className="animate-spin" size={20} />
-                <span className="text-sm font-medium">Loading...</span>
-              </div>
-              {loadProgress > 0 && (
-                <div className="text-sm mt-1">{Math.round(loadProgress)}% buffered</div>
-              )}
-            </div>
-          </div>
-        )} */}
-        
-        {/* Extension Prompt Modal */}
         {extensionPromptOpen && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
             <div className="bg-background p-6 rounded-lg shadow-xl w-full max-w-sm relative">
@@ -824,7 +682,6 @@ export const MockVideoEditor = ({
         )}
       </div>
 
-      {/* Video segments pill-viewer */}
       {segments.length > 1 && (
         <div
           className="flex flex-row items-center mt-5 gap-2 justify-center"

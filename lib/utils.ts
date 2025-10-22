@@ -136,3 +136,16 @@ export function getTitleFromChat(chat: Chat) {
 
   return firstMessage.content;
 }
+
+export const generationStatusMessage = (status: string): string => {
+  switch (status) {
+    case "initiating": return "Initiating video generation...";
+    case "generating": return "Generating video...";
+    case "retrieving": return "Retrieving video...";
+    case "ready": return "Video ready, preparing download...";
+    case "downloading": return "Downloading video...";
+    case "complete": return "Complete!";
+    case "error": return "Error occurred";
+    default: return "";
+  }
+};

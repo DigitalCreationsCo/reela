@@ -1,7 +1,1 @@
-export interface VideoItem {
-    id: string;
-    url: string;
-    prompt: string;
-    createdAt: Date;
-    saved?: boolean;
-}
+export type VideoGenerationStatus = 'idle' | 'initiating' | 'generating' | 'retrieving' | 'ready' | 'downloading' | 'complete' | 'error';
