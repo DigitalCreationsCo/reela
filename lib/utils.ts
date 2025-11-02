@@ -7,7 +7,6 @@ import {
 } from "ai";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-
 import { Chat } from "@/db/schema";
 
 export function cn(...inputs: ClassValue[]) {
@@ -211,4 +210,51 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
       }
     }, 8000);
   });
+}
+
+/**
+ * Converts a Blob or Buffer (image, audio, video, etc.) to a base64 string.
+ * The output is the raw base64 (without data URL prefix).
+ * Supports running in both browser and Node.js.
+ */
+export async function fileToBase64(input: Blob | ArrayBuffer | Uint8Array): Promise<string> {
+  // If it's a browser Blob or File, handle as before
+  if (typeof window !== "undefined" && typeof FileReader !== "undefined" && (input instanceof Blob)) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1] ?? "";
+        resolve(base64);
+      };
+      reader.onerror = (e) => {
+        reject(new Error("Failed to read file as base64"));
+      };
+      reader.readAsDataURL(input);
+    });
+  }
+
+  // Node.js or ArrayBuffer/Uint8Array in browser
+  let buffer: Uint8Array;
+  if (input instanceof ArrayBuffer) {
+    buffer = new Uint8Array(input);
+  } else if (ArrayBuffer.isView(input)) {
+    buffer = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  } else {
+    throw new Error("Unsupported fileToBase64 input type");
+  }
+
+  // Node.js: Buffer is available
+  if (typeof Buffer !== "undefined") {
+    // @ts-ignore: Buffer might not be defined in browsers
+    // eslint-disable-next-line no-undef
+    return Buffer.from(buffer).toString("base64");
+  }
+
+  // Fallback for browser: use btoa on binary string
+  let binary = "";
+  for (let i = 0; i < buffer.length; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return btoa(binary);
 }

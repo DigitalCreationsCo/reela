@@ -11,6 +11,7 @@ import { Video } from "@/db/schema";
 import { useVideoState } from "@/hooks/useVideoState";
 import { useVideoGenerator } from "@/hooks/useVideoGenerator";
 import { mockAsyncFetch } from "@/lib/mock-async-fetch";
+import { AttachmentType } from "@/lib/types";
 
 // WebSocket / connection error indicator state
 function useWebSocketConnectionStatus() {
@@ -72,7 +73,7 @@ export function Chat({
 }) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
-  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+  const [attachments, setAttachments] = useState<Array<AttachmentType>>([]);
 
   const { state, actions } = useVideoState();
   const { videos, generationStatus, progress, isGenerating } = state;
@@ -84,53 +85,65 @@ export function Chat({
 
   const append = useCallback((m: any) => setMessages(prev => [...prev, m]), []);
 
-  const handleGenerateVideo = useCallback(async (prompt: string) => {
-    setIsGenerating(true);
-    setStatus('initiating');
-    setProgress(0);
-    setError(null);
+  const handleGenerateVideo = useCallback(
+    async (prompt: string, extraAttachments?: Array<AttachmentType>) => {
+      setIsGenerating(true);
+      setStatus('initiating');
+      setProgress(0);
+      setError(null);
 
-    await generate(id,prompt, (evt) => {
-      switch (evt.type) {
-        case 'status':
-          actions.setStatus(evt.payload as any);
-          break;
-        case 'progress':
-          actions.setProgress(evt.payload as number);
-          break;
-        case 'complete': {
-          const video = evt.payload;
-          const item = new Video({
-            uri: video.uri,
-            fileId: (video.name || '').replace('files/', ''),
-            downloadUri: video.downloadUri || null,
-            prompt,
-            author: session?.user?.name || 'Anonymous',
-            userId: session?.user?.id || 'anonymous',
-            format: 'mp4',
-            fileSize: Number(video.sizeBytes || 0),
-            status: 'ready' as const,
-            createdAt: video.createTime ? new Date(video.createTime) : new Date()
-          });
-          actions.addVideo(item);
-          actions.setProgress(100);
-          actions.setStatus('complete');
-          actions.setIsGenerating(false);
-          break;
+      // Merge in any attachments passed to this handler, or from state
+      const attachmentsToSend = (extraAttachments !== undefined
+        ? [...attachments, ...extraAttachments]
+        : attachments
+      ) || [];
+
+      // Modify the generate() method to accept attachments as a third argument if needed
+      await generate(id, prompt, (evt) => {
+        switch (evt.type) {
+          case 'status':
+            actions.setStatus(evt.payload as any);
+            break;
+          case 'progress':
+            actions.setProgress(evt.payload as number);
+            break;
+          case 'complete': {
+            const video = evt.payload;
+            const item = new Video({
+              uri: video.uri,
+              fileId: (video.name || '').replace('files/', ''),
+              downloadUri: video.downloadUri || null,
+              prompt,
+              author: session?.user?.name || 'Anonymous',
+              userId: session?.user?.id || 'anonymous',
+              format: 'mp4',
+              fileSize: Number(video.sizeBytes || 0),
+              status: 'ready' as const,
+              createdAt: video.createTime ? new Date(video.createTime) : new Date(),
+              // Optionally include attachments here if your Video model supports them
+              // attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+            });
+            actions.addVideo(item);
+            actions.setProgress(100);
+            actions.setStatus('complete');
+            actions.setIsGenerating(false);
+            break;
+          }
+          case 'error':
+            actions.setError(evt.payload ?? 'Error');
+            actions.setIsGenerating(false);
+            actions.setStatus('error');
+            break;
+          case 'aborted':
+            actions.setError('Generation aborted');
+            actions.setIsGenerating(false);
+            actions.setStatus('idle');
+            break;
         }
-        case 'error':
-          actions.setError(evt.payload ?? 'Error');
-          actions.setIsGenerating(false);
-          actions.setStatus('error');
-          break;
-        case 'aborted':
-          actions.setError('Generation aborted');
-          actions.setIsGenerating(false);
-          actions.setStatus('idle');
-          break;
-      }
-    });
-  }, [actions, generate, session]);
+      }, attachmentsToSend); // <-- Pass as 4th param if generate supports it, or bundle in request
+    },
+    [actions, generate, session, attachments]
+  );
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e?.preventDefault();

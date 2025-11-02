@@ -18,6 +18,7 @@ import { PreviewAttachment } from "./preview-attachment";
 import useWindowSize from "./use-window-size";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { AttachmentType } from "@/lib/types";
 
 // const suggestedActions = [
 //   {
@@ -47,8 +48,8 @@ export function MultimodalInput({
   setInput: (value: string) => void;
   isLoading: boolean;
   stop: () => void;
-  attachments: Array<Attachment>;
-  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
+  attachments: Array<AttachmentType>;
+  setAttachments: Dispatch<SetStateAction<Array<AttachmentType>>>;
   messages: Array<Message>;
   append: (
     message: Message | CreateMessage,
@@ -106,7 +107,7 @@ export function MultimodalInput({
         return {
           url,
           pointer,
-          name: pathname,
+          pathname,
           contentType: contentType,
         };
       } else {

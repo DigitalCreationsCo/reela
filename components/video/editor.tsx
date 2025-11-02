@@ -4,7 +4,6 @@ import { Video } from "@/db/schema";
 import { PlusButton } from "../ui/plus-button";
 import { StopIcon } from "../custom/icons";
 import { extractFrameDataUrl, generateUUID } from "@/lib/utils";
-import { generateId } from "ai";
 
 type Segment = {
   key: string;
@@ -63,7 +62,6 @@ export const VideoEditor = ({
           preloadVideo.onerror = resolve;
         });
       } catch {}
-
       let thumbUrl = "";
       try {
         const { dataUrl } = await extractFrameDataUrl(streamUrl, "start");
@@ -79,7 +77,7 @@ export const VideoEditor = ({
             type: "main",
             thumbUrl,
             label: "Main",
-            videoData: video, // Use Video object directly
+            videoData: video,
           },
         ]);
         setSelectedSegment("main");
@@ -497,22 +495,27 @@ export const VideoEditor = ({
 
     if (url) {
       return (
-        <div className="relative">
+        <div className="relative flex">
           <video
             src={url}
-            className="w-full h-[340px] object-contain rounded-lg border bg-black"
+            className="w-full h-[32vw] max-h-[300px] min-h-[140px] object-contain rounded border bg-black"
             controls
             ref={segment.type === "main" ? videoRef : undefined}
             style={{
-              minHeight: 220,
-              maxHeight: 380,
               background: "#111",
             }}
-            />
-          <div style={{ position: "absolute", top: 8, right: 12, zIndex: 10, display: "flex", gap: 8 }}>
+          />
+          <div style={{
+            position: "absolute",
+            top: 6,
+            right: 8,
+            zIndex: 10,
+            display: "flex",
+            gap: 4
+          }}>
             {playableSegments.length > 1 && (
               <button
-                className={`rounded-full bg-blue-600 text-white font-semibold px-4 py-1 shadow hover:bg-blue-700 focus:outline-none text-sm transition disabled:opacity-40`}
+                className="rounded bg-blue-600 text-white text-xs px-3 py-0.5 hover:bg-blue-700 transition disabled:opacity-40"
                 type="button"
                 style={{
                   opacity:
@@ -534,15 +537,17 @@ export const VideoEditor = ({
                   isPlayingAll
                 }
                 onClick={playAll}
+                tabIndex={0}
               >
                 <PlayIcon />
               </button>
             )}
             {isPlayingAll && (
               <button
-                className="rounded-full bg-gray-300 text-gray-900 px-3 py-1 text-xs font-semibold shadow hover:bg-gray-400 ml-3"
+                className="rounded bg-gray-200 text-gray-900 px-2 py-0.5 text-xs ml-2 hover:bg-gray-300"
                 type="button"
                 onClick={clearPlayAll}
+                tabIndex={0}
               >
                 <StopIcon />
               </button>
@@ -552,13 +557,13 @@ export const VideoEditor = ({
             <div
               style={{
                 position: "absolute",
-                left: 12,
-                top: 10,
-                background: "rgba(31, 41, 55, 0.82)",
+                left: 8,
+                top: 6,
+                background: "rgba(31, 41, 55, 0.80)",
                 color: "#fff",
-                padding: "3px 14px",
-                borderRadius: "14px",
-                fontSize: "13px",
+                padding: "2px 9px",
+                borderRadius: "10px",
+                fontSize: "12px",
                 zIndex: 7,
                 fontWeight: 500,
               }}
@@ -570,14 +575,14 @@ export const VideoEditor = ({
       );
     }
     return (
-      <div className="flex items-center justify-center w-full min-h-[220px] bg-gray-100 rounded-lg border">
-        <span className="text-gray-500 text-lg">No video available</span>
+      <div className="flex items-center justify-center w-full min-h-[140px] bg-gray-100 rounded border">
+        <span className="text-gray-500 text-base">No video available</span>
       </div>
     );
   };
 
   return (
-    <div className="w-full h-full mx-auto px-12">
+    <div className="w-full h-full mx-auto px-2">
       <div className="h-full w-full relative">
         <PlusButton
           onClick={() => handlePromptOpen("start")}
@@ -592,17 +597,17 @@ export const VideoEditor = ({
 
         {displayedSegment && renderPlayer(displayedSegment)}
 
-
         {extensionPromptOpen && (
-          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
-            <div className="bg-background p-6 rounded-lg shadow-xl w-full max-w-sm relative">
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-2">
+            <div className="bg-background p-3 rounded shadow w-full max-w-xs relative">
               <button
-                className="absolute top-2 right-2 p-2 text-gray-500 hover:text-red-500"
+                className="absolute top-1.5 right-1.5 p-1 text-gray-500 hover:text-red-500"
                 onClick={handlePromptClose}
                 aria-label="Close"
                 disabled={extensionLoading}
+                tabIndex={0}
               >
-                <svg className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path
                     fillRule="evenodd"
                     d="M10 8.586l4.95-4.95 1.414 1.414L11.414 10l4.95 4.95-1.414 1.414L10 11.414l-4.95 4.95-1.414-1.414L8.586 10l-4.95-4.95 1.414-1.414L10 8.586z"
@@ -610,14 +615,14 @@ export const VideoEditor = ({
                   />
                 </svg>
               </button>
-              <h2 className="font-semibold text-lg mb-3">
+              <h2 className="font-medium text-base mb-2">
                 {extensionPromptOpen === "start" ? "Extend start of video" : "Extend end of video"}
               </h2>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Describe how you'd like to extend the video:
+              <label className="mb-1 block text-xs font-medium text-gray-700">
+                How would you like to extend the video?
               </label>
               <input
-                className="w-full rounded-md p-2 mb-2"
+                className="w-full rounded p-1 mb-1 text-sm border"
                 placeholder="E.g. add intro, fade in, etc."
                 value={extensionPromptValue}
                 onChange={(e) => setExtensionPromptValue(e.target.value)}
@@ -625,23 +630,24 @@ export const VideoEditor = ({
                 autoFocus
               />
               <button
-                className="mt-1 w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
+                className="mt-1 w-full bg-blue-600 text-white py-1 rounded font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
                 onClick={handleExtensionSubmit}
                 disabled={extensionLoading || !extensionPromptValue.trim()}
                 type="button"
+                tabIndex={0}
               >
                 {extensionLoading && streamProgress === 0
                   ? "Sending..."
                   : extensionLoading && streamProgress > 0 && streamProgress < 100
-                  ? <>Generating... <span className="align-middle">{streamProgress}%</span> <span className="inline-block animate-spin border-t-2 border-blue-400 rounded-full w-4 h-4 ml-2" /></>
+                  ? <>Generating... <span className="align-middle">{streamProgress}%</span> <span className="inline-block animate-spin border-t-2 border-blue-400 rounded-full w-3 h-3 ml-1" /></>
                   : `Send extension request`}
               </button>
-              {/* Show a stream progress bar */}
+              {/* Stream progress bar */}
               {extensionLoading && streamProgress > 0 && streamProgress < 100 && (
-                <div className="mt-2 w-full">
-                  <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                <div className="mt-1 w-full">
+                  <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
                     <div
-                      className="bg-blue-500 h-2 rounded-full transition-all"
+                      className="bg-blue-500 h-1.5 rounded-full transition-all"
                       style={{ width: `${streamProgress}%`, minWidth: 8 }}
                     ></div>
                   </div>
@@ -649,7 +655,7 @@ export const VideoEditor = ({
                 </div>
               )}
               {confirmMsg && (
-                <div className="mt-3 text-center" style={{ color: confirmMsg.startsWith("Failed") ? "#dc2626" : "#16a34a" }}>
+                <div className="mt-2 text-center text-xs" style={{ color: confirmMsg.startsWith("Failed") ? "#dc2626" : "#16a34a" }}>
                   {confirmMsg}
                 </div>
               )}
@@ -660,10 +666,10 @@ export const VideoEditor = ({
 
       {segments.length > 1 && (
         <div
-          className="flex flex-row items-center mt-5 gap-2 justify-center"
+          className="flex flex-row items-center mt-3 gap-1 justify-center"
           aria-label="Video Segments"
         >
-          {segments.map((segment, idx) => (
+          {segments.map((segment) => (
             <VideoSegmentPill
               key={segment.key}
               thumbUrl={segment.thumbUrl || "/images/video-icon.png"}
@@ -679,7 +685,7 @@ export const VideoEditor = ({
       )}
 
       {videoError && (
-        <div className="text-red-500 text-sm mt-2 p-2 bg-red-50 rounded border border-red-200">
+        <div className="text-red-500 text-xs mt-2 p-1 bg-red-50 rounded border border-red-200">
           {videoError}
         </div>
       )}
@@ -699,13 +705,10 @@ const VideoSegmentPill = ({
   onClick: () => void;
 }) => (
   <button
-    className={`flex flex-col items-center 
-      border ${selected ? "border-blue-600" : "border-gray-300"}
-      rounded-full px-2 py-1 mr-2 bg-background shadow text-xs transition min-w-[56px]
-      ${type === "extension" ? "opacity-90" : ""}
-    `}
+    className={`flex flex-col items-center border ${selected ? "border-blue-600" : "border-gray-300"} rounded-full px-1 py-0.5 bg-background shadow-xs text-xs transition min-w-[38px] ${type === "extension" ? "opacity-90" : ""}`}
     style={{
       outline: selected ? "2px solid #2563eb" : "",
+      marginRight: 4,
     }}
     onClick={onClick}
     type="button"
@@ -714,7 +717,7 @@ const VideoSegmentPill = ({
     <img
       src={thumbUrl}
       alt={type === "main" ? "Main video segment" : "Extension"}
-      className="w-10 h-6 object-cover rounded-full mb-1"
+      className="w-8 h-5 object-cover rounded-full mb-0.5"
       style={{
         border: type === "main" ? "2px solid #2563eb" : "2px solid #d1d5db",
         background: "#eee",
@@ -736,33 +739,33 @@ const ExtensionSegmentPlaceholder = ({
   progress?: number;
 }) => (
   <div
-    className="w-full h-full flex flex-col items-center justify-center bg-gray-100 border-2 border-dashed border-blue-300 rounded-lg p-6 animate-pulse transition"
-    style={{ minHeight: 220 }}
+    className="w-full h-full flex flex-col items-center justify-center bg-gray-100 border-2 border-dashed border-blue-300 rounded p-4 animate-pulse transition"
+    style={{ minHeight: 140 }}
     aria-label="Generating Extension Video"
   >
-    <div className="flex items-center gap-2 mb-4">
-      <LoaderIcon className="animate-spin text-blue-500" size={30} />
-      <span className="font-semibold text-blue-700 text-lg">Generating Extension&hellip;</span>
+    <div className="flex items-center gap-2 mb-3">
+      <LoaderIcon className="animate-spin text-blue-500" size={22} />
+      <span className="font-semibold text-blue-700 text-sm">Generating Extension&hellip;</span>
     </div>
-    <div className="text-blue-700 mb-2 text-sm">
+    <div className="text-blue-700 mb-1 text-xs">
       {message ??
         (side === "start"
           ? "Preparing to extend the video at the start&hellip;"
           : "Preparing to extend the video at the end&hellip;")}
     </div>
     {typeof progress === "number" && progress > 0 && progress < 100 && (
-      <div className="w-60 bg-blue-200 rounded-full h-2 mt-2">
+      <div className="w-32 bg-blue-200 rounded-full h-1 mt-1">
         <div
-          className="h-2 rounded-full bg-blue-500 transition-all"
+          className="h-1 rounded-full bg-blue-500 transition-all"
           style={{
             width: `${progress}%`,
-            minWidth: 12,
+            minWidth: 8,
           }}
         ></div>
       </div>
     )}
     {typeof progress === "number" && progress >= 100 && (
-      <div className="mt-3 text-green-600 text-sm font-medium">Finalizing&hellip;</div>
+      <div className="mt-2 text-green-600 text-xs font-medium">Finalizing&hellip;</div>
     )}
   </div>
 );

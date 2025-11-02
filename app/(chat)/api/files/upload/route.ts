@@ -3,6 +3,7 @@ import { z } from "zod";
 import { randomUUID } from "crypto";
 
 import { auth } from "@/auth";
+import { inMemoryFileStore } from "@/lib/memory-file-store";
 
 // Expanded file type support: add common video types.
 const ACCEPTED_TYPES = [
@@ -64,16 +65,6 @@ const FileSchema = z.object({
       message: `File type should be ${ACCEPTED_LABEL}`,
     }),
 });
-
-// In-memory store for uploaded files, keyed by UUID pointer
-type FilePointer = string;
-type StoredFile = {
-  buffer: ArrayBuffer;
-  contentType: string;
-  name: string;
-  size: number;
-};
-const inMemoryFileStore: Map<FilePointer, StoredFile> = new Map();
 
 export const maxDuration = 200;
 
