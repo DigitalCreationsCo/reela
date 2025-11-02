@@ -213,48 +213,123 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
 }
 
 /**
- * Converts a Blob or Buffer (image, audio, video, etc.) to a base64 string.
- * The output is the raw base64 (without data URL prefix).
- * Supports running in both browser and Node.js.
+ * Converts a Blob, ArrayBuffer, or Uint8Array to a base64 string (raw base64, no data URL prefix).
+ * Handles both browser and Node.js environments.
+ * Provides verbose error handling.
+ *
+ * @param input - Input can be Blob (including File), ArrayBuffer, or Uint8Array
+ * @returns Base64 string
  */
-export async function fileToBase64(input: Blob | ArrayBuffer | Uint8Array): Promise<string> {
-  // If it's a browser Blob or File, handle as before
-  if (typeof window !== "undefined" && typeof FileReader !== "undefined" && (input instanceof Blob)) {
+export async function fileToBase64(
+  input: Blob | ArrayBuffer | Uint8Array
+): Promise<string> {
+  if (
+    typeof window !== "undefined" &&
+    typeof FileReader !== "undefined" &&
+    input instanceof Blob
+  ) {
     return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(",")[1] ?? "";
-        resolve(base64);
-      };
-      reader.onerror = (e) => {
-        reject(new Error("Failed to read file as base64"));
-      };
-      reader.readAsDataURL(input);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            if (!reader.result) {
+              reject(new Error("FileReader produced empty result."));
+              return;
+            }
+            if (typeof reader.result !== "string") {
+              reject(
+                new Error(
+                  `Unexpected FileReader result type: ${typeof reader.result}. Expected string.`
+                )
+              );
+              return;
+            }
+            const parts = reader.result.split(",");
+            if (parts.length < 2 || !parts[1]) {
+              reject(
+                new Error(
+                  "FileReader returned an invalid data URL: missing base64 payload."
+                )
+              );
+              return;
+            }
+            resolve(parts[1]);
+          } catch (err) {
+            reject(
+              new Error(
+                `Failed to extract base64 string from FileReader result: ${(err as Error).message}`
+              )
+            );
+          }
+        };
+        reader.onerror = (e) => {
+          const error = reader.error;
+          reject(
+            new Error(
+              `Failed to read file as base64 (${
+                error ? error.name + ": " + error.message : "unknown error"
+              })`
+            )
+          );
+        };
+        reader.readAsDataURL(input);
+      } catch (err) {
+        reject(
+          new Error(
+            `Unexpected error while reading Blob/File as base64: ${(err as Error).message}`
+          )
+        );
+      }
     });
   }
 
-  // Node.js or ArrayBuffer/Uint8Array in browser
   let buffer: Uint8Array;
+
   if (input instanceof ArrayBuffer) {
     buffer = new Uint8Array(input);
-  } else if (ArrayBuffer.isView(input)) {
-    buffer = new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  } else if (
+    typeof ArrayBuffer !== "undefined" &&
+    ArrayBuffer.isView(input) &&
+    input instanceof Uint8Array
+  ) {
+    buffer = input;
+  } else if (
+    typeof ArrayBuffer !== "undefined" &&
+    ArrayBuffer.isView(input)
+  ) {
+    buffer = new Uint8Array((input as ArrayBufferView).buffer, (input as ArrayBufferView).byteOffset, (input as ArrayBufferView).byteLength);
   } else {
-    throw new Error("Unsupported fileToBase64 input type");
+    const actualType =
+      input === null
+        ? "null"
+        : typeof input === "object"
+        ? input.constructor?.name || typeof input
+        : typeof input;
+    throw new Error(
+      `Unsupported fileToBase64 input type: ${actualType}. Only Blob, ArrayBuffer, Uint8Array, and TypedArray views are supported.`
+    );
   }
 
-  // Node.js: Buffer is available
-  if (typeof Buffer !== "undefined") {
-    // @ts-ignore: Buffer might not be defined in browsers
-    // eslint-disable-next-line no-undef
-    return Buffer.from(buffer).toString("base64");
+  try {
+    if (
+      typeof Buffer !== "undefined" &&
+      typeof Buffer.from === "function"
+    ) {
+      return Buffer.from(buffer).toString("base64");
+    }
+  } catch (err) {
   }
 
-  // Fallback for browser: use btoa on binary string
-  let binary = "";
-  for (let i = 0; i < buffer.length; i++) {
-    binary += String.fromCharCode(buffer[i]);
+  try {
+    let binary = "";
+    for (let i = 0; i < buffer.length; i++) {
+      binary += String.fromCharCode(buffer[i]);
+    }
+    return btoa(binary);
+  } catch (err) {
+    throw new Error(
+      `Failed to convert buffer to base64 string using browser btoa: ${(err as Error).message}`
+    );
   }
-  return btoa(binary);
 }

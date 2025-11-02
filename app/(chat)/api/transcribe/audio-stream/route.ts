@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import ai from "@/lib/gemini";
 import { fileToBase64 } from "@/lib/utils";
-import { GenerateContentParameters } from "@google/genai";
 
 // Error types for better categorization (copied and simplified for re-use)
 enum ErrorType {
@@ -99,58 +98,90 @@ export async function POST(request: Request) {
       );
     }
 
-    let base64Audio: string;
-    try {
-      const audioBuffer = await audioFile.arrayBuffer();
-      base64Audio = await fileToBase64(audioBuffer);
-    } catch (err) {
-      return NextResponse.json(
-        {
-          error: "Failed to convert audio to base64",
-          type: ErrorType.INVALID_REQUEST
-        },
-        { status: 400 }
-      );
-    }
+    const encoder = new TextEncoder();
 
-    const contents: GenerateContentParameters['contents'] = [
-      {
-        text: "Generate a highly detailed description of the audio, featuring speech transcription and description of all sounds in the soundscape. Use timestamps to accurately depict the soundscape, including when sounds start, when they stop, and how they change through the audio."
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'initiating', progress: 0 })}\n\n`)
+          );
+
+          // Progress update: uploading
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'uploading', progress: 10 })}\n\n`)
+          );
+
+          // Encode File/Blob to base64
+          let base64Audio: string;
+          try {
+            base64Audio = await fileToBase64(audioFile);
+          } catch (err) {
+            throw new Error("Failed to convert audio to base64");
+          }
+
+          // Create request contents as per template and user instructions
+          const contents = [
+            {
+              text: "Generate a highly detailed description of the audio, featuring speech transcription and description of all sounds in the soundscape. Use timestamps to accurately depict the soundscape, including when sounds start, when they stop, and how they change through the audio."
+            },
+            {
+              inlineData: {
+                mimeType: audioFile.type || "audio/mp3", 
+                data: base64Audio,
+              }
+            }
+          ];
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'processing', progress: 25 })}\n\n`)
+          );
+
+          const aiResult = await ai.models.generateContentStream({
+            model: "gemini-2.5-flash",
+            contents,
+            config: {
+              abortSignal: (request as any).signal
+            }
+          });
+
+          let gotContent = false;
+
+          for await (const chunk of aiResult) {
+            gotContent = true;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ status: "stream", chunk })}\n\n`));
+          }
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ status: 'complete', progress: 100 })}\n\n`)
+          );
+          controller.close();
+        } catch (error) {
+          const { type, message, statusCode } = categorizeError(error);
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                status: "error",
+                error: message,
+                type: type,
+                statusCode
+              })}\n\n`
+            )
+          );
+          controller.close();
+        }
       },
-      {
-        inlineData: {
-          mimeType: audioFile.type || "audio/mp3", 
-          data: base64Audio,
-        }
+      cancel() {
       }
-    ];
+    });
 
-    try {
-      const aiResult = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents,
-        config: {
-          abortSignal: (request as any).signal
-        }
-      });
-
-      return NextResponse.json({
-        status: "complete",
-        result: aiResult,
-        progress: 100
-      });
-    } catch (error) {
-      const { type, message, statusCode } = categorizeError(error);
-      return NextResponse.json(
-        {
-          status: "error",
-          error: message,
-          type: type,
-          statusCode
-        },
-        { status: statusCode }
-      );
-    }
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
   } catch (error) {
     const { type, message, statusCode } = categorizeError(error);
     return NextResponse.json(

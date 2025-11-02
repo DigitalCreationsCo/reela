@@ -1,6 +1,6 @@
 "use client";
 
-import { Attachment, ChatRequestOptions, CreateMessage, Message } from "ai";
+import { CreateMessage, Message } from "ai";
 import { motion } from "framer-motion";
 import React, {
   useRef,
@@ -102,11 +102,12 @@ export function MultimodalInput({
 
       if (response.ok) {
         const data = await response.json();
-        const { url, pointer, pathname, contentType } = data;
+        const { url, pointer, name: filename, pathname, contentType } = data;
 
         return {
           url,
           pointer,
+          name: filename,
           pathname,
           contentType: contentType,
         };

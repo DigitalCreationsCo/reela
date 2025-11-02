@@ -31,6 +31,7 @@ const ACCEPTED_TYPES = [
 const ACCEPTED_LABEL =
   "Image (JPEG, PNG), Document (PDF, TXT, TEX, LaTeX), Audio (MP3, WAV, OGG, WEBM), or Video (MP4, MOV, WEBM, MKV)";
 const MAX_IMAGE_PDF_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_AUDIO_SIZE = 12 * 1024 * 1024; // 12MB
 const MAX_VIDEO_SIZE = 4 * 1024 * 1024 * 1024; // 4GB
 
 const FileSchema = z.object({
@@ -42,6 +43,17 @@ const FileSchema = z.object({
           ["image/jpeg", "image/png", "application/pdf"].includes(file.type)
         ) {
           return file.size <= MAX_IMAGE_PDF_SIZE;
+        }
+        if (
+          [
+            "audio/mpeg",
+            "audio/wav",
+            "audio/x-wav",
+            "audio/ogg",
+            "audio/webm",
+          ].includes(file.type)
+        ) {
+          return file.size <= MAX_AUDIO_SIZE;
         }
         if (
           [
@@ -58,7 +70,7 @@ const FileSchema = z.object({
       },
       {
         message:
-          `File size should be <= 5MB for images or PDFs, <= 4GB for videos`,
+          `File size should be <= 5MB for images or PDFs, <= 20MB for audio, <= 4GB for videos`,
       }
     )
     .refine((file) => ACCEPTED_TYPES.includes(file.type), {
@@ -90,7 +102,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const validatedFile = FileSchema.safeParse({ file });
+    const validatedFile =FileSchema.safeParse({ file });
 
     if (!validatedFile.success) {
       const errorMessage = validatedFile.error.errors
@@ -119,6 +131,7 @@ export async function POST(request: Request) {
       url: `/api/files/upload?pointer=${encodeURIComponent(pointer)}`,
       // for legacy UI code, also return "pathname" as the original filename (for display purposes)
       pathname: file.name,
+      name: file.name,
       contentType: file.type,
       size: file.size,
       // You could add more fields if needed

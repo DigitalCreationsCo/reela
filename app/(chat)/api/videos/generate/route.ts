@@ -21,7 +21,7 @@ import ai from "@/lib/gemini";
 import { NextResponse } from "next/server";
 import { GenerateVideosOperation, GenerateVideosParameters } from "@google/genai";
 import { AttachmentType } from "@/lib/types";
-import { StoredFile } from "@/lib/memory-file-store";
+import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
 
 // Error types for better categorization
 enum ErrorType {
@@ -165,7 +165,6 @@ export async function POST(request: Request) {
 
             let fileRecord: StoredFile | undefined;
             if (attachment.pointer) {
-              const { inMemoryFileStore } = await import("@/lib/memory-file-store");
               fileRecord = inMemoryFileStore.get(attachment.pointer);
               if (!fileRecord) {
                 throw new Error(`File not found in memory store for pointer: ${attachment.pointer}`);
@@ -215,71 +214,101 @@ export async function POST(request: Request) {
               case "audio/ogg":
               case "audio/webm":
                 {
-                  let audioBytes;
+                  let audioBlob;
                   let mimeType = attachment.contentType;
                   if (fileRecord) {
-                    audioBytes = await fileToBase64(fileRecord.buffer);
-                    mimeType = fileRecord.contentType as typeof mimeType;
+                    // fileRecord.buffer may be an ArrayBuffer or Buffer; ensure correct conversion to Blob
+                    audioBlob = new Blob([fileRecord.buffer], { type: mimeType });
                   } else if (attachment.url) {
                     const fetchRes = await fetch(attachment.url);
                     if (!fetchRes.ok) {
                       throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
                     }
                     const arrayBuffer = await fetchRes.arrayBuffer();
-                    audioBytes = await fileToBase64(arrayBuffer);
+                    audioBlob = new Blob([arrayBuffer], { type: mimeType });
+                  } else {
+                    throw new Error("No audio data for transcription");
                   }
+
+                  // Prepare multipart form data for transcription API
+                  const formData = new FormData();
+                  formData.append("file", audioBlob, "audiofile");
+
+                  const transcribeEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/transcribe/audio`;
+                  const transcribeRes = await fetch(transcribeEndpoint, {
+                    method: "POST",
+                    body: formData,
+                  });
+
+                  if (!transcribeRes.ok) {
+                    let errorText = await transcribeRes.text();
+                    throw new Error(`Failed to transcribe audio: ${errorText}`);
+                  }
+
+                  const transcriptionData = await transcribeRes.json();
+                  // Use the detailed description from the transcription as context
+                  const transcriptionText =
+                    typeof transcriptionData.result?.candidates === "object" && Array.isArray(transcriptionData.result.candidates)
+                      ? transcriptionData.result.candidates[0]?.content?.parts?.[0]?.text ?? ""
+                      : typeof transcriptionData.result === "string"
+                        ? transcriptionData.result
+                        : typeof transcriptionData.result?.content === "string"
+                          ? transcriptionData.result.content
+                          : "";
+
+                  const combinedPrompt = [
+                    `Audio description & transcription:\n${transcriptionText}`,
+                    `User request:\n${prompt}`
+                  ].filter(Boolean).join("\n\n");
+
                   videoGenOptions = {
                     model: "veo-3.1-generate-preview",
-                    prompt,
-                    audio: {
-                      audioBytes,
-                      mimeType,
-                    },
+                    prompt: combinedPrompt,
                     config: {
                       numberOfVideos: 1,
                       durationSeconds: 6,
-                      abortSignal: request.signal
-                    }
+                      abortSignal: request.signal,
+                    },
                   };
-                  usedAttachmentInfo = { type: attachment.contentType };
+                  usedAttachmentInfo = { type: attachment.contentType, transcription: Boolean(transcriptionText) };
                   break;
                 }
 
-              // VIDEO SUPPORT
-              case "video/mp4":
-              case "video/quicktime":
-              case "video/webm":
-              case "video/x-matroska":
-                {
-                  let videoBytes;
-                  let mimeType = attachment.contentType;
-                  if (fileRecord) {
-                    videoBytes = await fileToBase64(fileRecord.buffer);
-                    mimeType = fileRecord.contentType as typeof mimeType;
-                  } else if (attachment.url) {
-                    const fetchRes = await fetch(attachment.url);
-                    if (!fetchRes.ok) {
-                      throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
-                    }
-                    const arrayBuffer = await fetchRes.arrayBuffer();
-                    videoBytes = await fileToBase64(arrayBuffer);
-                  }
-                  videoGenOptions = {
-                    model: "veo-3.1-generate-preview",
-                    prompt,
-                    video: {
-                      videoBytes,
-                      mimeType,
-                    },
-                    config: {
-                      numberOfVideos: 1,
-                      durationSeconds: 6,
-                      abortSignal: request.signal
-                    }
-                  };
-                  usedAttachmentInfo = { type: attachment.contentType };
-                  break;
-                }
+              // VIDEO SUPPORT ONLY WITH GOOGLE GENAI GENERATED VIDEOS, REFACTOR
+              // case "video/mp4":
+              // case "video/quicktime":
+              // case "video/webm":
+              // case "video/x-matroska":
+              //   {
+              //     let videoBytes;
+              //     let mimeType = attachment.contentType;
+              //     if (fileRecord) {
+              //       videoBytes = await fileToBase64(fileRecord.buffer);
+              //       mimeType = fileRecord.contentType as typeof mimeType;
+              //     } else if (attachment.url) {
+              //       const fetchRes = await fetch(attachment.url);
+              //       if (!fetchRes.ok) {
+              //         throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
+              //       }
+              //       const arrayBuffer = await fetchRes.arrayBuffer();
+              //       videoBytes = await fileToBase64(arrayBuffer);
+              //     }
+              //     videoGenOptions = {
+              //       model: "veo-3.1-generate-preview",
+              //       prompt,
+              //       video: {
+              //         videoBytes,
+              //         mimeType,
+              //       },
+              //       config: {
+              //         numberOfVideos: 1,
+              //         durationSeconds: 6,
+              //         abortSignal: request.signal
+              //       }
+              //     };
+              //     usedAttachmentInfo = { type: attachment.contentType };
+              //     break;
+              //   }
 
               default:
                 throw new Error(`Unsupported attachment content type: ${attachment.contentType}`);
