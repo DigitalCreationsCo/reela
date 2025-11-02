@@ -1,6 +1,5 @@
 import { convertToCoreMessages, generateObject, Message, streamText } from "ai";
 import { z } from "zod";
-
 import { geminiProModel } from "@/ai";
 import {
   generateReservationPrice,
@@ -31,6 +30,8 @@ enum ErrorType {
   TIMEOUT_ERROR = 'timeout_error',
   NETWORK_ERROR = 'network_error',
   GENERATION_FAILED = 'generation_failed',
+  UPLOAD_FAILED = 'upload_failed',
+  TRANSCRIPTION_FAILED = 'transcription_failed',
   UNKNOWN_ERROR = 'unknown_error'
 }
 
@@ -99,6 +100,45 @@ function categorizeError(error: any): { type: ErrorType; message: string; status
   };
 }
 
+// Validate file size
+function validateFileSize(size: number, maxSize: number, fileType: string): void {
+  if (size === 0) {
+    throw new Error(`${fileType} file is empty (0 bytes)`);
+  }
+  if (size > maxSize) {
+    throw new Error(
+      `${fileType} file too large: ${(size / 1024 / 1024).toFixed(2)}MB (max ${maxSize / 1024 / 1024}MB)`
+    );
+  }
+}
+
+// Fetch and validate attachment from URL
+async function fetchAttachment(url: string, expectedType: string): Promise<ArrayBuffer> {
+  console.log(`[Attachment] Fetching from URL:`, url);
+  
+  const fetchRes = await fetch(url);
+  if (!fetchRes.ok) {
+    throw new Error(`Failed to fetch attachment at url: ${url}, status: ${fetchRes.status}`);
+  }
+
+  // Verify content type from response
+  const contentType = fetchRes.headers.get('content-type');
+  console.log(`[Attachment] Response content-type:`, contentType);
+  
+  if (contentType && !contentType.startsWith(expectedType.split('/')[0])) {
+    console.warn(`[Attachment] Content-type mismatch. Expected: ${expectedType}, Got: ${contentType}`);
+  }
+
+  const arrayBuffer = await fetchRes.arrayBuffer();
+  console.log(`[Attachment] Fetched size:`, arrayBuffer.byteLength, 'bytes');
+  
+  if (arrayBuffer.byteLength === 0) {
+    throw new Error("Fetched attachment data is empty");
+  }
+
+  return arrayBuffer;
+}
+
 export async function POST(request: Request) {
   try {
     const { id, messages }: { id: string; messages: Array<any> } =
@@ -136,17 +176,19 @@ export async function POST(request: Request) {
             encoder.encode(`data: ${JSON.stringify({ status: 'initiating', progress: 0 })}\n\n`)
           );
 
-          // ---- Attachment-aware video generation logic ----
-          // Find the input type and handle accordingly
           const lastMessage = messages[messages.length - 1];
           const prompt = lastMessage.content;
+          
+          if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+            throw new Error('Prompt cannot be empty');
+          }
+
           let attachments = lastMessage.attachments as Array<AttachmentType> || [];
-          let videoGenOptions: GenerateVideosParameters | null;
+          let videoGenOptions: GenerateVideosParameters;
           let usedAttachmentInfo: any = undefined;
 
-          // By default, just use text prompt only as before
+          // Default: text-only prompt
           videoGenOptions = {
-            // model: 'veo-3.0-fast-generate-001',
             model: 'veo-2.0-generate-001',
             source: {
               prompt,
@@ -158,10 +200,15 @@ export async function POST(request: Request) {
             }
           };
 
-          // If attachments exist, use them in an appropriate way
+          // Process attachments if present
           if (attachments && attachments.length > 0) {
-            // For simplicity, only use the first attachment for now
             const attachment = attachments[0];
+            console.log(`[Attachment] Processing attachment:`, {
+              contentType: attachment.contentType,
+              hasPointer: !!attachment.pointer,
+              hasUrl: !!attachment.url,
+              pathname: attachment.pathname
+            });
 
             let fileRecord: StoredFile | undefined;
             if (attachment.pointer) {
@@ -169,24 +216,33 @@ export async function POST(request: Request) {
               if (!fileRecord) {
                 throw new Error(`File not found in memory store for pointer: ${attachment.pointer}`);
               }
+              console.log(`[Attachment] Retrieved file from memory store:`, {
+                name: fileRecord.name,
+                size: fileRecord.buffer.byteLength,
+                type: fileRecord.contentType
+              });
             }
 
             switch (attachment.contentType) {
+              // ===== IMAGE ATTACHMENTS =====
               case "image/png":
               case "image/jpeg":
               case "image/jpg":
-                {
-                  let imageBytes;
+              case "image/webp":
+              case "image/gif": {
+                try {
+                  console.log(`[Image] Processing image attachment`);
+                  let imageBytes: string;
+
                   if (fileRecord) {
+                    validateFileSize(fileRecord.buffer.byteLength, 10 * 1024 * 1024, 'Image');
                     imageBytes = await fileToBase64(fileRecord.buffer);
                   } else if (attachment.url) {
-                    // Fallback, fetch from URL (legacy path)
-                    const fetchRes = await fetch(attachment.url);
-                    if (!fetchRes.ok) {
-                      throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
-                    }
-                    const arrayBuffer = await fetchRes.arrayBuffer();
+                    const arrayBuffer = await fetchAttachment(attachment.url, attachment.contentType);
+                    validateFileSize(arrayBuffer.byteLength, 10 * 1024 * 1024, 'Image');
                     imageBytes = await fileToBase64(arrayBuffer);
+                  } else {
+                    throw new Error("No image data available");
                   }
 
                   videoGenOptions = {
@@ -203,63 +259,88 @@ export async function POST(request: Request) {
                     }
                   };
                   usedAttachmentInfo = { type: attachment.contentType };
-                  break;
+                  console.log(`[Image] Successfully prepared image for video generation`);
+                } catch (error) {
+                  console.error(`[Image] Error processing image:`, error);
+                  throw new Error(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 }
+                break;
+              }
 
-              // AUDIO SUPPORT
+              // ===== AUDIO ATTACHMENTS =====
               case "audio/mpeg":
               case "audio/mp3":
               case "audio/wav":
               case "audio/x-wav":
               case "audio/ogg":
               case "audio/webm":
-                {
-                  let audioBlob;
+              case "audio/aac":
+              case "audio/flac": {
+                try {
+                  console.log(`[Audio] Processing audio attachment for transcription`);
+                  let audioBlob: Blob;
                   let mimeType = attachment.contentType;
+
                   if (fileRecord) {
-                    // fileRecord.buffer may be an ArrayBuffer or Buffer; ensure correct conversion to Blob
-                    audioBlob = new Blob([fileRecord.buffer], { type: mimeType });
+                    validateFileSize(fileRecord.buffer.byteLength, 25 * 1024 * 1024, 'Audio');
+                    audioBlob = new Blob([fileRecord.buffer], { type: fileRecord.contentType });
+                    mimeType = fileRecord.contentType as typeof mimeType;
                   } else if (attachment.url) {
-                    const fetchRes = await fetch(attachment.url);
-                    if (!fetchRes.ok) {
-                      throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
-                    }
-                    const arrayBuffer = await fetchRes.arrayBuffer();
+                    const arrayBuffer = await fetchAttachment(attachment.url, attachment.contentType);
+                    validateFileSize(arrayBuffer.byteLength, 25 * 1024 * 1024, 'Audio');
                     audioBlob = new Blob([arrayBuffer], { type: mimeType });
                   } else {
-                    throw new Error("No audio data for transcription");
+                    throw new Error("No audio data available");
                   }
 
-                  // Prepare multipart form data for transcription API
+                  console.log(`[Audio] Audio blob created, size:`, audioBlob.size, 'type:', audioBlob.type);
+
                   const formData = new FormData();
-                  formData.append("file", audioBlob, "audiofile");
+                  formData.append("file", audioBlob, fileRecord?.name || "audio-file");
 
                   const transcribeEndpoint = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/transcribe/audio`;
+                  console.log(`[Audio] Sending to transcription endpoint:`, transcribeEndpoint);
+
                   const transcribeRes = await fetch(transcribeEndpoint, {
                     method: "POST",
                     body: formData,
                   });
 
                   if (!transcribeRes.ok) {
-                    let errorText = await transcribeRes.text();
+                    const errorText = await transcribeRes.text();
+                    console.error(`[Audio] Transcription failed:`, errorText);
                     throw new Error(`Failed to transcribe audio: ${errorText}`);
                   }
 
                   const transcriptionData = await transcribeRes.json();
-                  // Use the detailed description from the transcription as context
-                  const transcriptionText =
-                    typeof transcriptionData.result?.candidates === "object" && Array.isArray(transcriptionData.result.candidates)
-                      ? transcriptionData.result.candidates[0]?.content?.parts?.[0]?.text ?? ""
-                      : typeof transcriptionData.result === "string"
-                        ? transcriptionData.result
-                        : typeof transcriptionData.result?.content === "string"
-                          ? transcriptionData.result.content
-                          : "";
+                  console.log(`[Audio] Transcription response:`, transcriptionData);
 
-                  const combinedPrompt = [
-                    `Audio description & transcription:\n${transcriptionText}`,
-                    `User request:\n${prompt}`
-                  ].filter(Boolean).join("\n\n");
+                  // Extract transcription text with better error handling
+                  let transcriptionText = "";
+                  try {
+                    if (transcriptionData.result?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                      transcriptionText = transcriptionData.result.candidates[0].content.parts[0].text;
+                    } else if (typeof transcriptionData.result === "string") {
+                      transcriptionText = transcriptionData.result;
+                    } else if (typeof transcriptionData.result?.content === "string") {
+                      transcriptionText = transcriptionData.result.content;
+                    } else if (typeof transcriptionData.text === "string") {
+                      transcriptionText = transcriptionData.text;
+                    }
+                  } catch (parseError) {
+                    console.error(`[Audio] Error parsing transcription:`, parseError);
+                  }
+
+                  if (!transcriptionText || transcriptionText.trim().length === 0) {
+                    console.warn(`[Audio] No transcription text extracted, using original prompt only`);
+                    transcriptionText = "";
+                  } else {
+                    console.log(`[Audio] Transcription extracted, length:`, transcriptionText.length);
+                  }
+
+                  const combinedPrompt = transcriptionText
+                    ? `Audio transcription:\n${transcriptionText}\n\nUser request:\n${prompt}`
+                    : prompt;
 
                   videoGenOptions = {
                     model: "veo-3.1-generate-preview",
@@ -270,56 +351,150 @@ export async function POST(request: Request) {
                       abortSignal: request.signal,
                     },
                   };
-                  usedAttachmentInfo = { type: attachment.contentType, transcription: Boolean(transcriptionText) };
-                  break;
+                  usedAttachmentInfo = { 
+                    type: attachment.contentType, 
+                    transcription: Boolean(transcriptionText),
+                    transcriptionLength: transcriptionText.length
+                  };
+                  console.log(`[Audio] Successfully prepared audio-based video generation`);
+                } catch (error) {
+                  console.error(`[Audio] Error processing audio:`, error);
+                  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                  
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({
+                      status: 'error',
+                      error: `Audio transcription failed: ${errorMessage}`,
+                      type: ErrorType.TRANSCRIPTION_FAILED,
+                      statusCode: 422
+                    })}\n\n`)
+                  );
+                  controller.close();
+                  return;
                 }
+                break;
+              }
 
-              // VIDEO SUPPORT ONLY WITH GOOGLE GENAI GENERATED VIDEOS, REFACTOR
-              // case "video/mp4":
-              // case "video/quicktime":
-              // case "video/webm":
-              // case "video/x-matroska":
-              //   {
-              //     let videoBytes;
-              //     let mimeType = attachment.contentType;
-              //     if (fileRecord) {
-              //       videoBytes = await fileToBase64(fileRecord.buffer);
-              //       mimeType = fileRecord.contentType as typeof mimeType;
-              //     } else if (attachment.url) {
-              //       const fetchRes = await fetch(attachment.url);
-              //       if (!fetchRes.ok) {
-              //         throw new Error(`Failed to fetch attachment at url: ${attachment.url}`);
-              //       }
-              //       const arrayBuffer = await fetchRes.arrayBuffer();
-              //       videoBytes = await fileToBase64(arrayBuffer);
-              //     }
-              //     videoGenOptions = {
-              //       model: "veo-3.1-generate-preview",
-              //       prompt,
-              //       video: {
-              //         videoBytes,
-              //         mimeType,
-              //       },
-              //       config: {
-              //         numberOfVideos: 1,
-              //         durationSeconds: 6,
-              //         abortSignal: request.signal
-              //       }
-              //     };
-              //     usedAttachmentInfo = { type: attachment.contentType };
-              //     break;
-              //   }
+              // ===== VIDEO ATTACHMENTS =====
+              case "video/mp4":
+              case "video/quicktime":
+              case "video/webm":
+              case "video/x-matroska":
+              case "video/avi":
+              case "video/mpeg": {
+                try {
+                  console.log(`[Video] Processing video attachment`);
+                  let videoFile: Blob;
+                  let mimeType = attachment.contentType;
+                  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+
+                  if (fileRecord) {
+                    console.log(`[Video] Using file buffer, size:`, fileRecord.buffer.byteLength);
+                    validateFileSize(fileRecord.buffer.byteLength, MAX_VIDEO_SIZE, 'Video');
+                    
+                    videoFile = new Blob([fileRecord.buffer], { type: fileRecord.contentType });
+                    mimeType = fileRecord.contentType as typeof mimeType;
+                    console.log(`[Video] Created blob from buffer, type:`, mimeType);
+                  } else if (attachment.url) {
+                    const arrayBuffer = await fetchAttachment(attachment.url, attachment.contentType);
+                    validateFileSize(arrayBuffer.byteLength, MAX_VIDEO_SIZE, 'Video');
+                    
+                    videoFile = new Blob([arrayBuffer], { type: mimeType });
+                    console.log(`[Video] Created blob from URL fetch, type:`, mimeType);
+                  } else {
+                    throw new Error("No video file or valid URL for video upload");
+                  }
+
+                  // Normalize MIME type for better compatibility
+                  let normalizedMimeType = mimeType;
+                  if (mimeType === 'video/quicktime') {
+                    console.warn(`[Video] QuickTime format detected - may have compatibility issues`);
+                    // Keep as quicktime, but warn user
+                  } else if (mimeType === 'video/x-matroska') {
+                    console.warn(`[Video] Matroska (MKV) format detected - converting to video/webm for better compatibility`);
+                    normalizedMimeType = 'video/webm';
+                  }
+
+                  console.log(`[Video] Uploading video to Google AI:`, {
+                    size: videoFile.size,
+                    type: normalizedMimeType,
+                    displayName: fileRecord?.name ?? attachment.pathname ?? 'video-upload.mp4'
+                  });
+
+                  // const uploadedVideo = await ai.files.upload({
+                  //   file: videoFile,
+                  //   config: {
+                  //     mimeType: normalizedMimeType,
+                  //     displayName: fileRecord?.name ?? attachment.pathname ?? 'video-upload.mp4',
+                  //   }
+                  // });
+
+                  // console.log(`[Video] Successfully uploaded video:`, uploadedVideo);
+
+                  const videoBuffer = await videoFile.arrayBuffer();
+                  videoGenOptions = {
+                    model: "veo-3.1-generate-preview",
+                    prompt,
+                    video: {
+                      // uri: uploadedVideo.uri,
+                      videoBytes: await fileToBase64(videoBuffer),
+                      mimeType
+                    },
+                    config: {
+                      numberOfVideos: 1,
+                      durationSeconds: 6,
+                      abortSignal: request.signal
+                    }
+                  };
+
+                  usedAttachmentInfo = { 
+                    type: attachment.contentType,
+                    fileName: fileRecord?.name ?? attachment.pathname,
+                    fileSize: videoFile.size,
+                    // uploadedFileId: uploadedVideo.name
+                  };
+                  console.log(`[Video] Successfully prepared video-based generation`);
+                } catch (error) {
+                  console.error(`[Video] Error processing video:`, error);
+                  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                  
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({
+                      status: 'error',
+                      error: `Video upload failed: ${errorMessage}`,
+                      type: ErrorType.UPLOAD_FAILED,
+                      statusCode: 400
+                    })}\n\n`)
+                  );
+                  controller.close();
+                  return;
+                }
+                break;
+              }
 
               default:
+                console.error(`[Attachment] Unsupported content type:`, attachment.contentType);
                 throw new Error(`Unsupported attachment content type: ${attachment.contentType}`);
-                break;
             }
           }
 
-          currentOperation = await ai.models.generateVideos(videoGenOptions!);
+          console.log(`[Generation] Starting video generation with options:`, {
+            model: videoGenOptions.model,
+            hasImage: 'image' in videoGenOptions,
+            hasVideo: 'video' in videoGenOptions,
+            hasSource: 'source' in videoGenOptions,
+            promptLength: prompt.length,
+            usedAttachment: usedAttachmentInfo
+          });
+
+          currentOperation = await ai.models.generateVideos(videoGenOptions);
 
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ status: 'generating', progress: 10, usedAttachment: usedAttachmentInfo })}\n\n`)
+            encoder.encode(`data: ${JSON.stringify({ 
+              status: 'generating', 
+              progress: 10, 
+              usedAttachment: usedAttachmentInfo 
+            })}\n\n`)
           );
 
           let pollCount = 0;
@@ -327,7 +502,7 @@ export async function POST(request: Request) {
 
           while (!currentOperation.done && pollCount < maxPolls) {
             if (request.signal?.aborted) {
-              console.log('Client aborted the request, stopping video generation');
+              console.log('[Generation] Client aborted the request, stopping video generation');
 
               try {
                 if (currentOperation?.name) {
@@ -336,11 +511,11 @@ export async function POST(request: Request) {
                     config: {
                       abortSignal: request.signal
                     }
-                  })
-                  console.log('Successfully cancelled Google Gen AI operation');
+                  });
+                  console.log('[Generation] Successfully cancelled Google Gen AI operation');
                 }
               } catch (cancelError) {
-                console.warn('Failed to cancel Google Gen AI operation:', cancelError);
+                console.warn('[Generation] Failed to cancel Google Gen AI operation:', cancelError);
               }
 
               controller.enqueue(
@@ -364,7 +539,7 @@ export async function POST(request: Request) {
               });
             } catch (pollError) {
               const { type, message, statusCode } = categorizeError(pollError);
-              console.error('Error polling operation status:', pollError);
+              console.error('[Generation] Error polling operation status:', pollError);
 
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({
@@ -379,7 +554,7 @@ export async function POST(request: Request) {
             }
 
             pollCount++;
-            const progress = Math.min(10 + (pollCount / maxPolls) * 120, 80);
+            const progress = Math.min(10 + (pollCount / maxPolls) * 70, 80);
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
@@ -391,7 +566,7 @@ export async function POST(request: Request) {
           }
 
           if (request.signal?.aborted) {
-            console.log('Client aborted the request during final operations');
+            console.log('[Generation] Client aborted the request during final operations');
 
             try {
               if (currentOperation?.name) {
@@ -401,10 +576,10 @@ export async function POST(request: Request) {
                     abortSignal: request.signal
                   }
                 });
-                console.log('Successfully cancelled Google Gen AI operation');
+                console.log('[Generation] Successfully cancelled Google Gen AI operation');
               }
             } catch (cancelError) {
-              console.warn('Failed to cancel Google Gen AI operation:', cancelError);
+              console.warn('[Generation] Failed to cancel Google Gen AI operation:', cancelError);
             }
 
             controller.enqueue(
@@ -438,7 +613,7 @@ export async function POST(request: Request) {
 
           if (currentOperation.error) {
             const { type, message, statusCode } = categorizeError(currentOperation.error);
-            console.error('Google operation completed with error:', currentOperation.error);
+            console.error('[Generation] Google operation completed with error:', currentOperation.error);
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
@@ -480,6 +655,8 @@ export async function POST(request: Request) {
               name: currentOperation.response.generatedVideos[0].video.uri,
             });
 
+            console.log('[Generation] Successfully retrieved generated video file:', generatedVideo.name);
+
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ status: 'ready', progress: 90 })}\n\n`)
             );
@@ -495,7 +672,7 @@ export async function POST(request: Request) {
             controller.close();
           } catch (fileError) {
             const { type, message, statusCode } = categorizeError(fileError);
-            console.error('Error retrieving generated video file:', fileError);
+            console.error('[Generation] Error retrieving generated video file:', fileError);
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
@@ -508,11 +685,22 @@ export async function POST(request: Request) {
             controller.close();
           }
         } catch (error) {
-          throw error;
+          const { type, message, statusCode } = categorizeError(error);
+          console.error('[Generation] Error in stream start handler:', error);
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({
+              status: 'error',
+              error: message,
+              type,
+              statusCode
+            })}\n\n`)
+          );
+          controller.close();
         }
       },
       cancel() {
-        console.log('Stream cancelled by client');
+        console.log('[Generation] Stream cancelled by client');
 
         if (currentOperation?.name) {
           ai.operations.getVideosOperation({
@@ -521,9 +709,9 @@ export async function POST(request: Request) {
               abortSignal: request.signal
             }
           }).then(() => {
-            console.log('Successfully cancelled Google Gen AI operation from cancel handler');
+            console.log('[Generation] Successfully cancelled Google Gen AI operation from cancel handler');
           }).catch((error) => {
-            console.warn('Failed to cancel Google Gen AI operation from cancel handler:', error);
+            console.warn('[Generation] Failed to cancel Google Gen AI operation from cancel handler:', error);
           });
         }
       }
@@ -538,7 +726,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const { type, message, statusCode } = categorizeError(error);
-    console.error('Error in POST handler before streaming:', error);
+    console.error('[Generation] Error in POST handler before streaming:', error);
 
     return NextResponse.json(
       {
@@ -610,7 +798,7 @@ export async function DELETE(request: Request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error in DELETE handler:", error);
+    console.error("[Delete] Error in DELETE handler:", error);
     const { type, message, statusCode } = categorizeError(error);
 
     return NextResponse.json(
