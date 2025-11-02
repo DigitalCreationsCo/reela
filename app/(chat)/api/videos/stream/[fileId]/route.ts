@@ -5,12 +5,12 @@ const REMOTE_VIDEO_BASE_URL = process.env.REMOTE_VIDEO_BASE_URL || "http://local
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fileId: string } }
+  { params }: { params: Promise<{ fileId: string }> }
 ) {
   const session = await auth();
+  const { fileId } = await params;
 
-  if (process.env.NODE_ENV === "development") {
-    const { fileId } = params;
+  if (process.env.NODE_ENV === "test") {
     const safeFileId = fileId.replace(/[^a-zA-Z0-9._-]/g, "");
     const videoUrl = `${REMOTE_VIDEO_BASE_URL}/${safeFileId}.mp4`;
 
@@ -44,7 +44,7 @@ export async function GET(
 
   try {
     const file = await ai.files.get({
-      name: params.fileId,
+      name: fileId,
     });
 
     const downloadUrl = new URL(file.downloadUri!);

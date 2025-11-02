@@ -101,10 +101,11 @@ export function MultimodalInput({
 
       if (response.ok) {
         const data = await response.json();
-        const { url, pathname, contentType } = data;
+        const { url, pointer, pathname, contentType } = data;
 
         return {
           url,
+          pointer,
           name: pathname,
           contentType: contentType,
         };

@@ -184,7 +184,7 @@ const VideoItem: React.FC<{
 
         {/* Duration badge */}
         {video.duration && (
-          <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
+          <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs rounded">
             {formatDuration(video.duration)}
           </div>
         )}
@@ -342,7 +342,7 @@ export const VideoCollage: React.FC<VideoCollageProps> = ({
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => fetchVideos(1, false)}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+            className="bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
             Try Again
           </button>
@@ -407,7 +407,7 @@ export const VideoCollage: React.FC<VideoCollageProps> = ({
         <div className="flex justify-center">
           <button
             onClick={loadMore}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            className="bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
             Load More Videos
           </button>

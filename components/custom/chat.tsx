@@ -12,7 +12,56 @@ import { useVideoState } from "@/hooks/useVideoState";
 import { useVideoGenerator } from "@/hooks/useVideoGenerator";
 import { mockAsyncFetch } from "@/lib/mock-async-fetch";
 
-export function MockChat({
+// WebSocket / connection error indicator state
+function useWebSocketConnectionStatus() {
+  const [wsError, setWsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Replace with your actual WebSocket URL if known, or adjust the detection logic as needed.
+    // If your backend requires authentication or a specific protocol, update wsUrl accordingly.
+    // This demonstrates a generic ws:// (or wss://) connection attempt to illustrate network failure.
+    let wsUrl = process.env.NEXT_PUBLIC_WS_URL || ""; // fallback to empty string if env not set
+    if (!wsUrl) return;
+
+    let ws: WebSocket | null = null;
+    let didUnmount = false;
+
+    function handleOpen() {
+      if (!didUnmount) setWsError(null);
+    }
+    function handleError() {
+      if (!didUnmount) setWsError("Could not connect to server (WebSocket error). Please check your network or try again later.");
+    }
+    function handleClose(e: CloseEvent) {
+      if (!didUnmount && e.code !== 1000) { // 1000 = clean close
+        setWsError("Lost connection to the server (WebSocket closed). Please try refreshing or check your connection.");
+      }
+    }
+
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.addEventListener("open", handleOpen);
+      ws.addEventListener("error", handleError);
+      ws.addEventListener("close", handleClose);
+    } catch (err) {
+      if (!didUnmount) setWsError("Could not initialize WebSocket connection.");
+    }
+
+    return () => {
+      didUnmount = true;
+      if (ws) {
+        ws.removeEventListener("open", handleOpen);
+        ws.removeEventListener("error", handleError);
+        ws.removeEventListener("close", handleClose);
+        ws.close();
+      }
+    };
+  }, []);
+
+  return wsError;
+}
+
+export function Chat({
   id,
   initialMessages,
   session,
@@ -29,7 +78,7 @@ export function MockChat({
   const { videos, generationStatus, progress, isGenerating } = state;
   const { setStatus, setProgress, setError, setIsGenerating } = actions;
 
-  const fetchFn = process.env.NODE_ENV === "development" ? mockAsyncFetch : fetch;
+  const fetchFn = process.env.NODE_ENV === "test" ? mockAsyncFetch : fetch;
 
   const { generate, abort } = useVideoGenerator({ fetchFn });
 
@@ -102,15 +151,24 @@ export function MockChat({
     abort();
   }, [abort]);
 
+  // Check websocket connection status and display error if present
+  const wsError = useWebSocketConnectionStatus();
+
   return (
     <div className="flex flex-col h-[92vh] justify-center bg-background">
       <div className="flex flex-col mx-auto w-full h-full">
-        
-        {!videos.length && !isGenerating && !messages.length && (
-          <div className="flex-1 flex items-center justify-center h-200">
-            <Overview />
+        {wsError ? (
+          <div className="flex flex-row items-center justify-center w-full p-4 bg-red-100 text-red-800 border border-red-400 rounded mb-4 text-center select-none">
+            <span className="mx-2">{wsError}</span>
           </div>
-        ) || null}
+        ) : null}
+        {
+          !videos.length && !isGenerating && !messages.length && (
+            <div className="flex-1 flex items-center justify-center h-200">
+              <Overview />
+            </div>
+          ) || null
+        }
 
         <VideoReel 
           videos={videos} 
@@ -121,7 +179,7 @@ export function MockChat({
           onPlay={(v) => { console.log('play', v); }}
           onDownload={(v) => { console.log('download', v); }}
           fetchFn={fetchFn}
-          />
+        />
 
         <div className="p-4">
           <form 

@@ -329,7 +329,7 @@ export const VideoEditor = ({
                 throw new Error(data.error || "Extension generation failed");
               }
             } catch (error) {
-              console.warn("Failed to parse SSE line", e);
+              console.warn("Failed to parse SSE line", error);
             }
           }
         }
@@ -493,10 +493,7 @@ export const VideoEditor = ({
     if (segment.type === "placeholder" && segment.placeholderComponent)
       return segment.placeholderComponent;
 
-    const url =
-      segment.videoData?.uri ||
-      segment.url ||
-      "";
+    const url = segment.url || segment.videoData?.uri || "";
 
     if (url) {
       return (

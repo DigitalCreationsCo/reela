@@ -85,11 +85,11 @@ export function VideoReel({
                 {shouldRenderEditor ? (
                   <div className="w-full flex flex-col lg:flex-row items-stretch justify-center h-full mx-auto">
                     {/* VideoInfo (left sidebar) for lg+ */}
-                    <div className="hidden lg:flex flex-col items-stretch w-72 xl:w-80 flex-shrink-0 border-r bg-background/90 backdrop-blur-sm">
+                    {/* <div className="hidden lg:flex flex-col items-stretch w-72 xl:w-80 flex-shrink-0 border-r bg-background/90 backdrop-blur-sm">
                       {!isGenerating && (
                         <VideoInfo video={video} session={session} fetchFn={fetchFn} />
                       )}
-                    </div>
+                    </div> */}
 
                     <div className="flex flex-col w-full relative min-h-0">
                       {isActive && (
@@ -98,19 +98,11 @@ export function VideoReel({
                             <VideoEditor
                               video={video}
                               fetchFn={fetchFn}
+                              session={session}
                             />
                           </div>
                         </div>
                       )}
-
-                      {/* On mobile/tablet, show VideoInfo below the player */}
-                      <div className="w-full lg:hidden flex-shrink-0 border-t bg-background/95 backdrop-blur-sm">
-                        {!isGenerating && isActive && (
-                          <div className="p-3 sm:p-4">
-                            <VideoInfo video={video} session={session} fetchFn={fetchFn} />
-                          </div>
-                        )}
-                      </div>
                     </div>
                   </div>
                 ) : (

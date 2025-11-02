@@ -64,7 +64,7 @@ export const VideoInfo = ({ fetchFn, video, session }: { fetchFn: any, video: Vi
     };
 
     return (
-        <div className={`p-4 space-y-4 ${collapsed && 'cursor-pointer'}`} onClick={(e) => { e.stopPropagation();setCollapsed(false); }}>
+        <div className={`border p-4 space-y-4 ${collapsed && 'cursor-pointer'}`} onClick={(e) => { e.stopPropagation();setCollapsed(false); }}>
         <div className="rounded-lg flex flex-col gap-2">
             
             <div className="text-lg font-medium text-foreground">{title}</div>
@@ -73,7 +73,7 @@ export const VideoInfo = ({ fetchFn, video, session }: { fetchFn: any, video: Vi
                 <button
                 type="button"
                 onClick={(e) => { e.stopPropagation();setCollapsed(!collapsed); }}
-                className={`${collapsed && 'hidden'} self-end px-2 py-1 text-xs rounded transition`}
+                className={`${collapsed && 'hidden'} self-end text-xs rounded transition`}
                 aria-expanded={!collapsed}
                 >
                 {collapsed ? "Show more" : "Hide details"}

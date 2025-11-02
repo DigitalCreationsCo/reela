@@ -15,18 +15,14 @@ export const Overview = () => {
       transition={{ delay: 0.5 }}
     >
       <div className="border-none bg-muted/50 rounded-2xl p-6 flex flex-col gap-2 text-muted-foreground text-sm dark:text-muted-foreground dark:border-zinc-700">
-        <p className="flex flex-row justify-center gap-2 items-center text-xl font-semibold">
-          <span>Welcome to Reelo.</span>
+        <p className="flex flex-row justify-center gap-2 items-center text-lg font-semibold">
           <Image
               src="/images/gemini-logo.png"
               height={20}
               width={20}
               alt="gemini logo"
             />
-        </p>
-        <p className='text-center text-md'>
-          Generate and share clips. 
-          {/* <br/>Members can rate videos and remix them. */}
+          Generate and share video clips. 
         </p>
       </div>
     </motion.div>
