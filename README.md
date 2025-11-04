@@ -1,8 +1,6 @@
 # reela
 
-**One-line:** Generative AI cinematic video studio for creating high-quality AI-powered films and videos with advanced prompting and data-driven composition.
-
----
+Generative AI cinematic video studio for creating high-quality AI-powered films and videos with advanced prompting and data-driven composition.
 
 ## Overview
 
@@ -108,16 +106,3 @@ pnpm start
 MIT License
 
 ---
-
-## Tags
-
-Generative-AI Video Studio Cinematic AI Next.js Node.js TypeScript PostgreSQL Supabase AI-SDK Prompting Video-Composer Web-App Gemini OpenAI Anthropic Cohere
-
----
-
-## ABOUT (short, for portfolio/GitHub)
-
-reela is a generative AI cinematic video studio that enables creators to produce immersive, AI-generated films using advanced prompting and data-driven composition techniques. Built with Next.js, Node.js, TypeScript, AI SDK, and PostgreSQL, reela combines interactive web tools with multi-model AI support to make cinematic video creation accessible, fast, and highly customizable.
-
-Best regards,
-Bryant Mejia
