@@ -13,7 +13,14 @@ export class GoogleCloudStorageProvider implements StorageProvider {
   private bucketName: string;
 
   constructor(bucketName: string) {
-    this.storage = new Storage({ projectId: 'gen-lang-client-0253509148' });
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64) {
+      throw new Error('Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64 is not set.');
+    }
+    const credentialsJson = Buffer.from(
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON_BASE64,
+        "base64"
+      ).toString("utf8");
+    this.storage = new Storage({ credentials: JSON.parse(credentialsJson) });
     this.bucketName = bucketName;
   }
 
