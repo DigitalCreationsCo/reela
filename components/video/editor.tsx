@@ -21,9 +21,11 @@ type Segment = {
 export const VideoEditor = ({
   video,
   fetchFn,
+  duration,
 }: {
   video: Video;
   fetchFn: any;
+  duration: number;
 }) => {
   
   const videoRef = useRef<HTMLVideoElement>(null);

@@ -123,7 +123,7 @@ export async function POST(request: Request) {
             model: 'veo-2.0-generate-001',
             source: {
               prompt,
-              image: referenceFrame // This assumes the SDK can accept a FormData Blob/File. Adapt as needed.
+              image: referenceFrame as any
             },
             config: {
               numberOfVideos: 1,

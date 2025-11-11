@@ -12,17 +12,36 @@ const runMigrate = async () => {
     throw new Error("POSTGRES_URL is not defined");
   }
 
-  const connection = postgres(process.env.POSTGRES_URL, { max: 1 });
+  console.log("📍 Using database connection from POSTGRES_URL");
+  console.log("📍 Connection string format:", process.env.POSTGRES_URL.substring(0, 30) + "...");
+
+  const connection = postgres(process.env.POSTGRES_URL, { 
+    max: 1,
+    ssl: 'require', // Explicitly require SSL for Neon/Vercel
+    connection: {
+      application_name: 'drizzle_migration'
+    }
+  });
+
   const db = drizzle(connection);
 
   console.log("⏳ Running migrations...");
 
   const start = Date.now();
-  await migrate(db, { migrationsFolder: "./lib/drizzle" });
-  const end = Date.now();
-
-  console.log("✅ Migrations completed in", end - start, "ms");
-  process.exit(0);
+  
+  try {
+    await migrate(db, { migrationsFolder: "./lib/drizzle" });
+    const end = Date.now();
+    
+    console.log("✅ Migrations completed in", end - start, "ms");
+    await connection.end();
+    process.exit(0);
+  } catch (error) {
+    console.error("❌ Migration failed");
+    console.error("Error details:", error);
+    await connection.end();
+    process.exit(1);
+  }
 };
 
 runMigrate().catch((err) => {

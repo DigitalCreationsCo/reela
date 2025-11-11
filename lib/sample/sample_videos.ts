@@ -1,6 +1,6 @@
 import { Video } from "@/db/schema";
 
-export const SAMPLE_VIDEOS: Video[] = [
+export const SAMPLE_VIDEOS: any[] = [
   {
     id: "2e8891a7-d633-4db7-9236-8a48f6322ac3",
     genre: "action",

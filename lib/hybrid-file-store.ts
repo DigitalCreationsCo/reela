@@ -1,6 +1,6 @@
 // lib/file-store-hybrid.ts
 import { inMemoryFileStore } from './memory-file-store';
-import { distributedFileStore } from './distributed-file-store';
+import { inMemoryFileStore as distributedFileStore } from './distributed-file-store';
 
 export class HybridFileStore {
   /**
@@ -17,7 +17,7 @@ export class HybridFileStore {
     // Also store in distributed cache for cross-instance access
     if (process.env.UPSTASH_REDIS_REST_URL) {
       try {
-        await distributedFileStore.set(pointer, file, ttlMs ? Math.floor(ttlMs / 1000) : undefined);
+        await distributedFileStore.set(pointer, file);
       } catch (error) {
         console.error('[HybridFileStore] Failed to store in distributed cache:', error);
         // Continue anyway - local memory still works

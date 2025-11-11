@@ -50,7 +50,7 @@ class VideoCache {
 const videoCache = new VideoCache();
 
 // Mock data generator for demo purposes
-const generateMockVideos = (count: number): Video[] => {
+const generateMockVideos = (count: number): any[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: `video-${i + 1}`,
     uri: `https://sample-videos.com/zip/10/mp4/SampleVideo_${720}x${480}_${1}mb.mp4`,

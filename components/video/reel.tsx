@@ -20,6 +20,7 @@ interface VideoReelProps {
   onDownload?: (id: string) => void;
   className?: string;
   fetchFn: any;
+  duration: number;
 }
 
 export function VideoReel({
@@ -33,7 +34,8 @@ export function VideoReel({
   generationStatus,
   progress,
   className = "",
-  fetchFn
+  fetchFn,
+  duration,
 }: VideoReelProps) {
   const { containerRef, refs, activeIndex } = useFeed(videos);
   const status = generationStatusMessage(generationStatus);
@@ -82,6 +84,7 @@ export function VideoReel({
                         <VideoEditor
                           video={video}
                           fetchFn={fetchFn}
+                          duration={duration}
                         />
                       </div>
                     </div>

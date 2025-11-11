@@ -208,6 +208,7 @@ export function Chat({
           onPlay={(v) => { console.log('play', v); }}
           onDownload={(v) => { console.log('download', v); }}
           fetchFn={fetchFn}
+          duration={duration}
         />
 
         <div className="p-4">

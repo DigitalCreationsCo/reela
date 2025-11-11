@@ -331,3 +331,43 @@ export async function getVideosByStatus({
     throw error;
   }
 }
+
+export async function getVideoByFileId({ fileId }: { fileId: string }) {
+  const [result] = await db
+    .select()
+    .from(video)
+    .where(eq(video.fileId, fileId))
+    .limit(1);
+
+  return result;
+}
+
+// Optional: If you want to get only non-temporary videos
+export async function getPermanentVideoByFileId({ fileId }: { fileId: string }) {
+  const [result] = await db
+    .select()
+    .from(video)
+    .where(and(eq(video.fileId, fileId), eq(video.isTemporary, false)))
+    .limit(1);
+
+  return result;
+}
+
+// Optional: Get video with user info
+export async function getVideoWithUserByFileId({ fileId }: { fileId: string }) {
+  const [result] = await db
+    .select({
+      video: video,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      }
+    })
+    .from(video)
+    .leftJoin(user, eq(video.userId, user.id))
+    .where(eq(video.fileId, fileId))
+    .limit(1);
+
+  return result;
+}

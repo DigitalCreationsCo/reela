@@ -31,5 +31,5 @@ export default async function Page({ params }: { params: any }) {
     return notFound();
   }
 
-  return <PreviewChat id={chat.id} initialMessages={chat.messages} />;
+  return <PreviewChat id={chat.id} session={session} initialMessages={chat.messages} />;
 }

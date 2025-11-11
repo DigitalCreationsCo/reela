@@ -62,7 +62,7 @@ export const video = pgTable("Video", {
   fileSize: integer("fileSize"),
   views: integer("views"),
   thumbnailUri: text("thumbnailUri"),
-  status: varchar("status", { length: 32 }).notNull().default("processing"), 
+  status: varchar("status", { length: 32 }).notNull().default("processing"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   userId: uuid("userId")
@@ -70,6 +70,8 @@ export const video = pgTable("Video", {
   author: varchar("author", { length: 64 }), // Stores the username as a string (denormalized for performance), now optional
   expiresAt: timestamp("expiresAt"), // New field for video expiration
   isTemporary: boolean("isTemporary").notNull().default(false), // New field to mark temporary videos
+  parentId: uuid("parentId"), // New field for chaining videos
+  chainOrder: integer("chainOrder"), // New field for ordering videos in a chain
 });
 
 export class Video implements InferSelectModel<typeof video> {
@@ -89,7 +91,7 @@ export class Video implements InferSelectModel<typeof video> {
   views: number;
   thumbnailUri: string;
   status: "processing" | "ready" | "failed";
-  genre: (typeof genres)[number];
+  genre: (typeof genres)[number] | null; // Made optional
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null; // New field
@@ -114,7 +116,7 @@ export class Video implements InferSelectModel<typeof video> {
     views = 0,
     thumbnailUri = "",
     status = "processing",
-    genre,
+    genre = null, // Made optional
     createdAt = new Date(),
     updatedAt = new Date(),
     expiresAt = null, // New field
@@ -138,7 +140,7 @@ export class Video implements InferSelectModel<typeof video> {
     this.views = views;
     this.thumbnailUri = thumbnailUri;
     this.status = status;
-    this.genre = genre!;
+    this.genre = genre; // Assign new field
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
     this.expiresAt = expiresAt; // Assign new field

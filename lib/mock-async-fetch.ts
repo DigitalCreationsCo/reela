@@ -62,7 +62,7 @@ export async function mockAsyncFetch(url: string, options?: any) {
         // Fallback: original mock data (static/fake video binary)
         let sent = 0;
         let chunkNum = 0;
-        const total = sampleVideo.fileSize;
+        const total = sampleVideo.fileSize || 0;
         function createChunk(size: number) {
           const chunk = new Uint8Array(size);
           if (chunkNum === 1) {

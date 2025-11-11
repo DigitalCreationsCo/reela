@@ -129,7 +129,7 @@ async function fetchAttachment(url: string, expectedType: string): Promise<Array
 
 const handler = createMcpHandler(
   (server) => {
-    server.tool(
+    (server.tool as any)(
       "generate_video",
       "Generates a video based on a prompt and returns a public download link.",
       z.object({
@@ -137,7 +137,7 @@ const handler = createMcpHandler(
         modelName: z.string().default("veo-3.1-generate-preview").describe("The model to use for video generation."),
         abortSignal: z.any().optional().describe("An AbortSignal to cancel the video generation."),
       }),
-      async ({ prompt, modelName, abortSignal }) => {
+      async ({ prompt, modelName, abortSignal }: any) => {
         try {
           const session = await auth();
 
