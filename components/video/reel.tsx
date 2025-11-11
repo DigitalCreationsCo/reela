@@ -62,7 +62,7 @@ export function VideoReel({
             <div
               key={video.id}
               ref={el => { refs.current[i] = el; }}
-              className="snap-start w-full flex items-center justify-center h-[70vh] relative"
+              className="snap-start w-full flex items-center justify-center h-full relative"
               style={{
                 overflow: "hidden",
                 transition: "opacity 0.2s, transform 0.2s",

@@ -66,10 +66,10 @@ export const video = pgTable("Video", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   userId: uuid("userId")
-    .notNull()
-    .references(() => user.id), // Foreign key reference to User table
-  author: varchar("author", { length: 64 })
-    .notNull(), // Stores the username as a string (denormalized for performance)
+    .references(() => user.id), // Foreign key reference to User table, now optional
+  author: varchar("author", { length: 64 }), // Stores the username as a string (denormalized for performance), now optional
+  expiresAt: timestamp("expiresAt"), // New field for video expiration
+  isTemporary: boolean("isTemporary").notNull().default(false), // New field to mark temporary videos
 });
 
 export class Video implements InferSelectModel<typeof video> {
@@ -84,14 +84,18 @@ export class Video implements InferSelectModel<typeof video> {
   description: string | null;
   duration: number | null;
   fileSize: number | null;
-  author: string;
-  userId: string;
+  author: string | null; // Now optional
+  userId: string | null; // Now optional
   views: number;
   thumbnailUri: string;
   status: "processing" | "ready" | "failed";
   genre: (typeof genres)[number];
   createdAt: Date;
   updatedAt: Date;
+  expiresAt: Date | null; // New field
+  isTemporary: boolean; // New field
+  parentId: string | null; // New field for chaining videos
+  chainOrder: number | null; // New field for ordering videos in a chain
 
   constructor({
     id,
@@ -105,15 +109,19 @@ export class Video implements InferSelectModel<typeof video> {
     description = null,
     duration = null,
     fileSize = null,
-    author,
-    userId,
+    author = null, // Now optional
+    userId = null, // Now optional
     views = 0,
     thumbnailUri = "",
     status = "processing",
     genre,
     createdAt = new Date(),
     updatedAt = new Date(),
-  }: Partial<Video> & { uri: string; fileId: string; prompt: string; author: string; userId: string }) {
+    expiresAt = null, // New field
+    isTemporary = false, // New field
+    parentId = null, // New field
+    chainOrder = null, // New field
+  }: Partial<Video> & { uri: string; fileId: string; prompt: string }) { // userId and author are now optional in constructor
     this.id = id ?? generateUUID();
     this.uri = uri;
     this.fileId = fileId;
@@ -133,6 +141,10 @@ export class Video implements InferSelectModel<typeof video> {
     this.genre = genre!;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
+    this.expiresAt = expiresAt; // Assign new field
+    this.isTemporary = isTemporary; // Assign new field
+    this.parentId = parentId; // Assign new field
+    this.chainOrder = chainOrder; // Assign new field
   }
 }
 

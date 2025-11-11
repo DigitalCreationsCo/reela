@@ -5,7 +5,13 @@ import { auth } from "@/auth";
 import {
   deleteChatById,
   getChatById,
+  getVideo,
+  getLatestChainOrder,
+  insertVideo,
 } from "@/db/queries";
+import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
+import { generateUUID } from "@/lib/utils";
+import { Video } from "@/db/schema";
 
 // Error types for better categorization
 enum ErrorType {
@@ -240,7 +246,7 @@ export async function POST(request: Request) {
           );
 
           try {
-            const generatedVideo = await ai.files.get({
+            const generatedVideoFile = await ai.files.get({
               name: currentOperation.response.generatedVideos[0].video.uri,
             });
 
@@ -248,21 +254,114 @@ export async function POST(request: Request) {
               encoder.encode(`data: ${JSON.stringify({ status: 'ready', progress: 90 })}\n\n`)
             );
 
+            // Fetch the actual video content from the downloadUri
+            const videoDownloadResponse = await fetch(generatedVideoFile.downloadUri!); 
+            if (!videoDownloadResponse.ok) {
+              throw new Error(`Failed to fetch generated video content: ${videoDownloadResponse.statusText}`);
+            }
+            const videoBuffer = await videoDownloadResponse.arrayBuffer();
+            const videoContentType = generatedVideoFile.mimeType || 'video/mp4';
+
+            const fileId = generateUUID(); // Generate a unique fileId for storage
+
+            const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos');
+            const objectStorageManager = new ObjectStorageManager(gcsProvider);
+
+            let storedVideoUri: string;
+            let downloadUri: string | null = null;
+            let expiresAt: Date | null = null;
+            let isTemporary = false;
+            let newChainOrder: number | null = null;
+
+            if (session?.user) {
+              // User is signed in: store permanently, save to DB
+              storedVideoUri = await objectStorageManager.uploadVideo(
+                fileId,
+                Buffer.from(videoBuffer),
+                videoContentType,
+                false // Not temporary
+              );
+
+              // Generate a signed URL for download (long-lived or permanent)
+              downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 60 * 24 * 365 * 10); // 10 years expiration
+
+              // Determine chainOrder
+              const parentVideo = await getVideo({ id: videoId });
+              if (parentVideo) {
+                const latestChainOrder = await getLatestChainOrder({ parentId: parentVideo.fileId, side });
+                if (side === "start") {
+                  newChainOrder = (latestChainOrder !== null && latestChainOrder !== undefined) ? latestChainOrder - 1 : -1;
+                } else { // side === "end"
+                  newChainOrder = (latestChainOrder !== null && latestChainOrder !== undefined) ? latestChainOrder + 1 : 1;
+                }
+              } else {
+                // If parent video not found, treat as a new chain (or error, depending on desired behavior)
+                // For now, let's assume it's the start of a new chain if parent not found
+                newChainOrder = 0;
+              }
+
+              const newVideo = new Video({
+                id: generateUUID(),
+                fileId: fileId,
+                uri: storedVideoUri,
+                downloadUri: downloadUri,
+                prompt: prompt,
+                userId: session.user.id,
+                author: session.user.name || "Anonymous",
+                format: videoContentType,
+                fileSize: videoBuffer.byteLength,
+                status: "ready",
+                isTemporary: false,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                parentId: parentVideo?.fileId || null, // Link to parent video by its fileId
+                chainOrder: newChainOrder,
+              });
+              await insertVideo(newVideo); // Save video metadata to database
+              console.log("[Generation] Extension video saved to DB and GCS for signed-in user:", newVideo.id);
+
+            } else {
+              // User is not signed in: store temporarily (30 min expiration), do not save to DB
+              isTemporary = true;
+              expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
+
+              storedVideoUri = await objectStorageManager.uploadVideo(
+                fileId,
+                Buffer.from(videoBuffer),
+                videoContentType,
+                true // Temporary
+              );
+
+              // Generate a signed URL for download with 30 min expiration
+              downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 30); // 30 minutes expiration for unsigned users
+              console.log("[Generation] Temporary extension video saved to GCS for unsigned user:", fileId);
+            }
+
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
-                status: 'complete',
+                status: "complete",
                 progress: 100,
-                video: generatedVideo
+                video: {
+                  fileId: fileId,
+                  uri: storedVideoUri,
+                  downloadUri: downloadUri,
+                  isTemporary: isTemporary,
+                  expiresAt: expiresAt?.toISOString() || null,
+                  parentId: videoId, // Return parentId for client-side chaining
+                  chainOrder: newChainOrder,
+                }
               })}\n\n`)
             );
 
             controller.close();
           } catch (fileError) {
             const { type, message, statusCode } = categorizeError(fileError);
+            console.error("[Generation] Error retrieving or storing generated video file:", fileError);
+
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
-                status: 'error',
-                error: `Failed to retrieve video file: ${message}`,
+                status: "error",
+                error: `Failed to retrieve or store video file: ${message}`,
                 type,
                 statusCode
               })}\n\n`)
@@ -270,24 +369,41 @@ export async function POST(request: Request) {
             controller.close();
           }
         } catch (error) {
-          throw error;
+          const { type, message, statusCode } = categorizeError(error);
+          console.error("[Generation] Error in stream start handler:", error);
+
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({
+              status: "error",
+              error: message,
+              type,
+              statusCode
+            })}\n\n`)
+          );
+          controller.close();
         }
       },
       cancel() {
+        console.log("[Generation] Stream cancelled by client");
+
         if (currentOperation?.name) {
           ai.operations.getVideosOperation({
             operation: currentOperation,
             config: { abortSignal: request.signal }
-          }).catch(() => {});
+          }).then(() => {
+            console.log("[Generation] Successfully cancelled Google Gen AI operation from cancel handler");
+          }).catch((error) => {
+            console.warn("[Generation] Failed to cancel Google Gen AI operation from cancel handler:", error);
+          });
         }
       }
     });
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
       },
     });
   } catch (error) {

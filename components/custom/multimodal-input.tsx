@@ -43,6 +43,11 @@ export function MultimodalInput({
   messages,
   append,
   handleSubmit,
+  duration,
+  setDuration,
+  availableModels,
+  modelName,
+  setModelName,
 }: {
   input: string;
   setInput: (value: string) => void;
@@ -55,6 +60,11 @@ export function MultimodalInput({
     message: Message | CreateMessage,
   ) => void;
   handleSubmit: (e: React.FormEvent) => void;
+  duration: number;
+  setDuration: Dispatch<SetStateAction<number>>;
+  availableModels: Array<{ name: string; id: string; durations: number[]; defaultDuration: number }>;
+  modelName: string;
+  setModelName: Dispatch<SetStateAction<string>>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -209,25 +219,72 @@ export function MultimodalInput({
         </div>
       )}
 
-        <Textarea
-          ref={textareaRef}
-          placeholder="What will you create?"
-          value={input}
-          onChange={handleInput}
-          className="min-h-[24px] border-0 overflow-hidden resize-none rounded-lg text-base bg-gradient-to-tl from-zinc-100 via-zinc-50 to-zinc-200 dark:from-zinc-900 dark:via-zinc-800 dark:to-zinc-700 text-foreground"
-          rows={3}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
+      <div className="flex items-center gap-2 mt-2">
+        <label htmlFor="model" className="text-xs font-medium text-gray-700">Model:</label>
+        <select
+          id="model"
+          className="w-40 rounded p-1 text-sm border"
+          value={modelName}
+          onChange={(e) => setModelName(e.target.value)}
+          disabled={isLoading}
+        >
+          {availableModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </select>
 
-              if (isLoading) {
-                toast.error("Please wait for the model to finish its response!");
-              } else {
-                submitForm(event);
-              }
+        <label htmlFor="duration" className="text-xs font-medium text-gray-700">Duration (seconds):</label>
+        <select
+          id="duration"
+          className="w-20 rounded p-1 text-sm border"
+          value={duration}
+          onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+          disabled={isLoading || attachments.some(att => att.contentType?.startsWith("image/"))} // Disable if image attachment is present
+        >
+          {/* Render duration options based on selected model and attachment presence */}
+          {(() => {
+            const currentModel = availableModels.find(model => model.id === modelName);
+            const hasImageAttachment = attachments.some(att => att.contentType?.startsWith("image/"));
+
+            let durationsToDisplay: number[] = [];
+            if (hasImageAttachment) {
+              durationsToDisplay = [8]; // Fixed to 8 if image is present
+            } else if (currentModel) {
+              durationsToDisplay = currentModel.durations;
+            } else {
+              durationsToDisplay = [8]; // Default if no model selected
             }
-          }}
-        />
+
+            return durationsToDisplay.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ));
+          })()}
+        </select>
+      </div>
+
+      <Textarea
+        ref={textareaRef}
+        placeholder="What will you create?"
+        value={input}
+        onChange={handleInput}
+        className="min-h-[24px] border-0 overflow-hidden resize-none rounded-lg text-base bg-gradient-to-tl from-zinc-100 via-zinc-50 to-zinc-200 dark:from-zinc-900 dark:via-zinc-800 dark:to-zinc-700 text-foreground"
+        rows={3}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+
+            if (isLoading) {
+              toast.error("Please wait for the model to finish its response!");
+            } else {
+              submitForm(event);
+            }
+          }
+        }}
+      />
 
       {isLoading ? (
         <Button

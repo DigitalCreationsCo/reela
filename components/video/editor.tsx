@@ -106,7 +106,7 @@ export const VideoEditor = ({
 
     const handleLoadStart = () => {
       if (!mounted) return
-      setVideoError('');
+      setVideoError("");
     };
 
     const handleCanPlay = () => {
@@ -252,6 +252,7 @@ export const VideoEditor = ({
       formData.append("referenceFrame", frameBlob, "frame.jpg");
       formData.append("side", extensionPromptOpen as "start" | "end");
       formData.append("videoId", video.fileId);
+      formData.append("durationSeconds", duration.toString());
 
       const resp = await fetchFn("/api/videos/generate/extend", {
         method: "POST",
@@ -418,7 +419,7 @@ export const VideoEditor = ({
       setStreamProgress(0);
       setExtPlaceholderKey(null);
     }
-  }, [extensionPromptOpen, extensionPromptValue, segments, streamExtensionVideo, video.fileId]);
+  }, [extensionPromptOpen, extensionPromptValue, segments, streamExtensionVideo, video.fileId, duration]);
 
   const handlePromptClose = () => {
     setExtensionPromptOpen(null);
@@ -629,8 +630,9 @@ export const VideoEditor = ({
                 disabled={extensionLoading}
                 autoFocus
               />
+
               <button
-                className="mt-1 w-full bg-blue-600 text-white py-1 rounded font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
+                className="mt-3 w-full bg-blue-600 text-white py-1 rounded font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none"
                 onClick={handleExtensionSubmit}
                 disabled={extensionLoading || !extensionPromptValue.trim()}
                 type="button"

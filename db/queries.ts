@@ -142,11 +142,21 @@ export async function updateReservation({
 
 // Video CRUD operations
 
+export async function insertVideo(newVideo: Video) {
+  try {
+    const result = await db.insert(video).values(newVideo).returning();
+    return result[0];
+  } catch (error) {
+    console.error("Failed to insert video into database");
+    throw error;
+  }
+}
+
 export async function saveVideo(videoData: {
   uri: string;
   fileId: string;
   prompt: string;
-  userId: string;
+  userId?: string; // Make userId optional
   genre?: (typeof genres)[number];
   title?: string;
   description?: string;
@@ -155,17 +165,23 @@ export async function saveVideo(videoData: {
   fileSize?: number;
   thumbnailUri?: string;
   status?: "processing" | "ready" | "failed";
+  expiresAt?: Date | null; // Add expiresAt
+  isTemporary?: boolean; // Add isTemporary
+  parentId?: string | null; // Add parentId
+  chainOrder?: number | null; // Add chainOrder
 }) {
-  const userData = await db.select({ username: user.username })
-    .from(user)
-    .where(eq(user.id, videoData.userId))
-    .limit(1);
-  
-  if (!userData.length) {
-    throw new Error(`User with id ${videoData.userId} not found`);
+  let username: string | null = null;
+  if (videoData.userId) {
+    const userData = await db.select({ username: user.username })
+      .from(user)
+      .where(eq(user.id, videoData.userId))
+      .limit(1);
+    
+    if (!userData.length) {
+      throw new Error(`User with id ${videoData.userId} not found`);
+    }
+    username = userData[0].username;
   }
-  
-  const username = userData[0].username;
   
   const newVideo = new Video({
     ...videoData,
@@ -174,6 +190,35 @@ export async function saveVideo(videoData: {
   
   const result = await db.insert(video).values(newVideo).returning();
   return result[0];
+}
+
+export async function getVideosByParentId({ parentId }: { parentId: string }) {
+  try {
+    return await db
+      .select()
+      .from(video)
+      .where(eq(video.parentId, parentId))
+      .orderBy(video.chainOrder);
+  } catch (error) {
+    console.error("Failed to get videos by parentId from database");
+    throw error;
+  }
+}
+
+export async function getLatestChainOrder({ parentId, side }: { parentId: string; side: "start" | "end" }) {
+  try {
+    const result = await db
+      .select({ chainOrder: video.chainOrder })
+      .from(video)
+      .where(eq(video.parentId, parentId))
+      .orderBy(side === "start" ? desc(video.chainOrder) : video.chainOrder)
+      .limit(1);
+
+    return result[0]?.chainOrder;
+  } catch (error) {
+    console.error("Failed to get latest chain order from database");
+    throw error;
+  }
 }
 
 export async function getAllVideos() {

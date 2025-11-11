@@ -33,27 +33,15 @@ export const VideoInfo = ({ fetchFn, video, session }: { fetchFn: any, video: Vi
     const handleDownload = async () => {
         setIsDownloading(true);
         try {
-            const response = await fetchFn(`/api/videos/stream/${video.fileId}`);
-            
-            if (!response.ok) {
-                throw new Error('Failed to download video');
-            }
-
-            const blob = await response.blob();
-            
-            const url = window.URL.createObjectURL(blob);
+            const downloadUrl = `/api/videos/stream/${video.fileId}`;
             const a = document.createElement('a');
-            a.href = url;
-            
+            a.href = downloadUrl;
             const fileName = title 
                 ? `${title.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`
                 : `video_${video.fileId}.mp4`;
-            a.download = fileName;
-            
+            a.download = fileName; // This attribute forces download and suggests filename
             document.body.appendChild(a);
             a.click();
-            
-            window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
             console.error('Download failed:', error);

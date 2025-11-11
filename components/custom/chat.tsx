@@ -74,6 +74,22 @@ export function Chat({
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<Array<AttachmentType>>([]);
+  const [modelName, setModelName] = useState<string>("veo-3.1-generate-preview"); // Default model
+  const [duration, setDuration] = useState<number>(8); // Default duration to 8
+
+  const availableModels = [
+    { name: "Veo 2", id: "veo-2.0-generate-001", durations: [5, 6, 7, 8], defaultDuration: 8 },
+    { name: "Veo 3", id: "veo-3.1-generate-preview", durations: [4, 6, 8], defaultDuration: 8 },
+  ];
+
+  const currentModel = availableModels.find(model => model.id === modelName) || availableModels[1]; // Fallback to Veo 3
+
+  useEffect(() => {
+    // Adjust duration if the current duration is not valid for the selected model
+    if (!currentModel.durations.includes(duration)) {
+      setDuration(currentModel.defaultDuration);
+    }
+  }, [modelName, duration, currentModel]);
 
   const { state, actions } = useVideoState();
   const { videos, generationStatus, progress, isGenerating } = state;
@@ -86,58 +102,56 @@ export function Chat({
   const append = useCallback((m: any) => setMessages(prev => [...prev, m]), []);
 
   const handleGenerateVideo = useCallback(
-    async (prompt: string, extraAttachments?: Array<AttachmentType>) => {
+    async (prompt: string, durationSeconds: number, model: string, extraAttachments?: Array<AttachmentType>) => {
       setIsGenerating(true);
-      setStatus('initiating');
+      setStatus("initiating");
       setProgress(0);
       setError(null);
 
-      // Merge in any attachments passed to this handler, or from state
       const attachmentsToSend = (extraAttachments !== undefined
         ? [...attachments, ...extraAttachments]
         : attachments
       ) || [];
 
-      // Modify the generate() method to accept attachments as a third argument if needed
-      await generate(id, prompt, (evt) => {
+      await generate(id, prompt, durationSeconds, model, (evt) => {
         switch (evt.type) {
-          case 'status':
+          case "status":
             actions.setStatus(evt.payload as any);
             break;
-          case 'progress':
+          case "progress":
             actions.setProgress(evt.payload as number);
             break;
-          case 'complete': {
+          case "complete": {
             const video = evt.payload;
             const item = new Video({
               uri: video.uri,
-              fileId: (video.name || '').replace('files/', ''),
+              fileId: (video.name || "").replace("files/", ""),
               downloadUri: video.downloadUri || null,
               prompt,
-              author: session?.user?.name || 'Anonymous',
-              userId: session?.user?.id || 'anonymous',
-              format: 'mp4',
+              author: session?.user?.name || "Anonymous",
+              userId: session?.user?.id || "anonymous",
+              format: "mp4",
               fileSize: Number(video.sizeBytes || 0),
-              status: 'ready' as const,
+              status: "ready" as const,
               createdAt: video.createTime ? new Date(video.createTime) : new Date(),
               // Optionally include attachments here if your Video model supports them
               // attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
             });
             actions.addVideo(item);
             actions.setProgress(100);
-            actions.setStatus('complete');
+            actions.setStatus("complete");
             actions.setIsGenerating(false);
             break;
           }
-          case 'error':
-            actions.setError(evt.payload ?? 'Error');
+          case "error":
+            actions.setError(evt.payload ?? "Error");
             actions.setIsGenerating(false);
-            actions.setStatus('error');
+            actions.setStatus("error");
             break;
-          case 'aborted':
-            actions.setError('Generation aborted');
+          case "aborted":
+            actions.setError("Generation aborted");
             actions.setIsGenerating(false);
-            actions.setStatus('idle');
+            actions.setStatus("idle");
             break;
         }
       }, attachmentsToSend); // <-- Pass as 4th param if generate supports it, or bundle in request
@@ -153,12 +167,14 @@ export function Chat({
     }
 
     append({
-      role: 'user',
+      role: "user",
       content,
+      durationSeconds: duration,
+      modelName: modelName,
     });
-    setInput('');
-    await handleGenerateVideo(content);
-  }, [input, handleGenerateVideo, append]);
+    setInput("");
+    await handleGenerateVideo(content, duration, modelName);
+  }, [input, handleGenerateVideo, append, duration, modelName]);
 
   const stop = useCallback(() => {
     abort();
@@ -209,6 +225,11 @@ export function Chat({
               setAttachments={setAttachments}
               messages={messages}
               append={append}
+              duration={duration}
+              setDuration={setDuration}
+              availableModels={availableModels}
+              modelName={modelName}
+              setModelName={setModelName}
             />
           </form>
         </div>

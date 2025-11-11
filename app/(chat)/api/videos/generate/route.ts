@@ -21,6 +21,9 @@ import { NextResponse } from "next/server";
 import { GenerateVideosOperation, GenerateVideosParameters } from "@google/genai";
 import { AttachmentType } from "@/lib/types";
 import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
+import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
+import { Video } from "@/db/schema";
+import { insertVideo } from "@/db/queries"; // Assuming insertVideo exists or will be created
 
 // Error types for better categorization
 enum ErrorType {
@@ -141,19 +144,18 @@ async function fetchAttachment(url: string, expectedType: string): Promise<Array
 
 export async function POST(request: Request) {
   try {
-    const { id, messages }: { id: string; messages: Array<any> } =
+    const { id, messages, modelName }: { id: string; messages: Array<any>; modelName?: string } =
       await request.json();
 
     const session = await auth();
 
+    const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos'); // Use an environment variable for bucket name
+    const objectStorageManager = new ObjectStorageManager(gcsProvider);
+
+    // Uncommented authentication check
     // if (!session || !session.user) {
-    //   return NextResponse.json(
-    //     {
-    //       error: 'Authentication required',
-    //       type: ErrorType.AUTHENTICATION_ERROR
-    //     },
-    //     { status: 401 }
-    //   );
+    //   // For now, we allow unauthenticated users to generate temporary videos.
+    //   // The logic below will handle temporary storage.
     // }
 
     if (!messages || !messages.length || !messages[messages.length - 1]?.content) {
@@ -187,15 +189,31 @@ export async function POST(request: Request) {
           let videoGenOptions: GenerateVideosParameters;
           let usedAttachmentInfo: any = undefined;
 
-          // Default: text-only prompt
+          let calculatedDurationSeconds = lastMessage.durationSeconds || 8; // Default to 8
+          const hasImageAttachment = attachments.some(att => att.contentType?.startsWith("image/"));
+
+          if (hasImageAttachment) {
+            calculatedDurationSeconds = 8; // Fixed to 8 when using reference images
+          } else if (modelName === "veo-2.0-generate-001") {
+            // Veo 2 models: 5-8, default 8
+            if (calculatedDurationSeconds < 5 || calculatedDurationSeconds > 8) {
+              calculatedDurationSeconds = 8; // Enforce default if outside range
+            }
+          } else if (modelName === "veo-3.1-generate-preview") {
+            // Veo 3 models: 4, 6, or 8, default 8
+            if (![4, 6, 8].includes(calculatedDurationSeconds)) {
+              calculatedDurationSeconds = 8; // Enforce default if not 4, 6, or 8
+            }
+          }
+
           videoGenOptions = {
-            model: 'veo-2.0-generate-001',
+            model: modelName || "veo-3.1-generate-preview", // Use provided modelName or default
             source: {
               prompt,
             },
             config: {
               numberOfVideos: 1,
-              durationSeconds: 6,
+              durationSeconds: calculatedDurationSeconds,
               abortSignal: request.signal
             }
           };
@@ -245,8 +263,9 @@ export async function POST(request: Request) {
                     throw new Error("No image data available");
                   }
 
+                  let imageDurationSeconds = 8; // Fixed to 8 when using reference images
                   videoGenOptions = {
-                    model: "veo-3.1-generate-preview",
+                    model: modelName || "veo-3.1-generate-preview", // Use provided modelName or default
                     prompt,
                     image: {
                       imageBytes,
@@ -254,7 +273,7 @@ export async function POST(request: Request) {
                     },
                     config: {
                       numberOfVideos: 1,
-                      durationSeconds: 6,
+                      durationSeconds: imageDurationSeconds,
                       abortSignal: request.signal
                     }
                   };
@@ -342,12 +361,16 @@ export async function POST(request: Request) {
                     ? `Audio transcription:\n${transcriptionText}\n\nUser request:\n${prompt}`
                     : prompt;
 
+                  let audioDurationSeconds = 6; // Default for audio-only, will be overridden if image present
+                  if (attachments.some(att => att.contentType?.startsWith("image/"))) {
+                    audioDurationSeconds = 8; // If there's also an image, duration is 8
+                  }
                   videoGenOptions = {
-                    model: "veo-3.1-generate-preview",
+                    model: modelName || "veo-3.1-generate-preview", // Use provided modelName or default
                     prompt: combinedPrompt,
                     config: {
                       numberOfVideos: 1,
-                      durationSeconds: 6,
+                      durationSeconds: audioDurationSeconds,
                       abortSignal: request.signal,
                     },
                   };
@@ -421,28 +444,28 @@ export async function POST(request: Request) {
                     displayName: fileRecord?.name ?? attachment.pathname ?? 'video-upload.mp4'
                   });
 
-                  // const uploadedVideo = await ai.files.upload({
-                  //   file: videoFile,
-                  //   config: {
-                  //     mimeType: normalizedMimeType,
-                  //     displayName: fileRecord?.name ?? attachment.pathname ?? 'video-upload.mp4',
-                  //   }
-                  // });
+                  const uploadedVideo = await ai.files.upload({
+                    file: videoFile,
+                    // config: {
+                    //   mimeType: normalizedMimeType,
+                    //   displayName: fileRecord?.name ?? attachment.pathname ?? 'video-upload.mp4',
+                    // }
+                  });
 
                   // console.log(`[Video] Successfully uploaded video:`, uploadedVideo);
 
-                  const videoBuffer = await videoFile.arrayBuffer();
+                  // const videoBuffer = await videoFile.arrayBuffer();
+                  let videoDurationSeconds = 6; // Default for video-only, will be overridden if image present
+                  if (attachments.some(att => att.contentType?.startsWith("image/"))) {
+                    videoDurationSeconds = 8; // If there's also an image, duration is 8
+                  }
                   videoGenOptions = {
-                    model: "veo-3.1-generate-preview",
+                    model: modelName || "veo-3.1-generate-preview", // Use provided modelName or default
                     prompt,
-                    video: {
-                      // uri: uploadedVideo.uri,
-                      videoBytes: await fileToBase64(videoBuffer),
-                      mimeType
-                    },
+                    video: uploadedVideo,
                     config: {
                       numberOfVideos: 1,
-                      durationSeconds: 6,
+                      durationSeconds: videoDurationSeconds,
                       abortSignal: request.signal
                     }
                   };
@@ -651,33 +674,112 @@ export async function POST(request: Request) {
           );
 
           try {
-            const generatedVideo = await ai.files.get({
+            const generatedVideoFile = await ai.files.get({
               name: currentOperation.response.generatedVideos[0].video.uri,
             });
 
-            console.log('[Generation] Successfully retrieved generated video file:', generatedVideo.name);
+            console.log('[Generation] Successfully retrieved generated video file:', generatedVideoFile.name);
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ status: 'ready', progress: 90 })}\n\n`)
             );
 
+            // Retrieve the generated video file as a buffer
+            // The 'File_2' type from Google Gen AI SDK does not directly expose arrayBuffer().
+            // We need to fetch the content from the downloadUri.
+            console.log("[Generation] Attempting to fetch video from downloadUri:", generatedVideoFile.downloadUri);
+            
+            const downloadUrl = new URL(generatedVideoFile.downloadUri!);
+            downloadUrl.searchParams.set('key', process.env.GOOGLE_GENERATIVE_AI_API_KEY!);
+            const videoDownloadResponse = await fetch(downloadUrl.toString());
+            
+            if (!videoDownloadResponse.ok) {
+              console.error("[Generation] Failed to fetch video content. Status:", videoDownloadResponse.status, "Status Text:", videoDownloadResponse.statusText, "URL:", generatedVideoFile.downloadUri);
+              const errorBody = await videoDownloadResponse.text();
+              console.error("[Generation] Error response body:", errorBody);
+              throw new Error(`Failed to fetch generated video content: ${videoDownloadResponse.statusText}`);
+            }
+            const videoBuffer = await videoDownloadResponse.arrayBuffer();
+            const videoContentType = generatedVideoFile.mimeType || 'video/mp4'; // Assuming mp4 if not specified
+
+            const fileId = generateUUID(); // Generate a unique fileId for storage
+
+            let storedVideoUri: string;
+            let downloadUri: string | null = null;
+            let expiresAt: Date | null = null;
+            let isTemporary = false;
+
+            if (session?.user) {
+              // User is signed in: store permanently, save to DB
+              storedVideoUri = await objectStorageManager.uploadVideo(
+                fileId,
+                Buffer.from(videoBuffer),
+                videoContentType,
+                false // Not temporary
+              );
+
+              // Generate a signed URL for download (long-lived or permanent)
+              downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 60 * 24 * 365 * 10); // 10 years expiration for signed-in users
+
+              const newVideo = new Video({
+                id: generateUUID(),
+                fileId: fileId,
+                uri: storedVideoUri,
+                downloadUri: downloadUri,
+                prompt: prompt,
+                userId: session.user.id,
+                author: session.user.name || "Anonymous",
+                format: videoContentType,
+                fileSize: videoBuffer.byteLength,
+                status: "ready",
+                isTemporary: false,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                // Other metadata can be extracted from generatedVideo if available
+              });
+              await insertVideo(newVideo); // Save video metadata to database
+              console.log('[Generation] Video saved to DB and GCS for signed-in user:', newVideo.id);
+
+            } else {
+              // User is not signed in: store temporarily (30 min expiration), do not save to DB
+              isTemporary = true;
+              expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
+
+              storedVideoUri = await objectStorageManager.uploadVideo(
+                fileId,
+                Buffer.from(videoBuffer),
+                videoContentType,
+                true // Temporary
+              );
+
+              // Generate a signed URL for download with 30 min expiration
+              downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 30); // 30 minutes expiration for unsigned users
+              console.log('[Generation] Temporary video saved to GCS for unsigned user:', fileId);
+            }
+
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 status: 'complete',
                 progress: 100,
-                video: generatedVideo
+                video: {
+                  fileId: fileId,
+                  uri: storedVideoUri,
+                  downloadUri: downloadUri,
+                  isTemporary: isTemporary,
+                  expiresAt: expiresAt?.toISOString() || null,
+                }
               })}\n\n`)
             );
 
             controller.close();
           } catch (fileError) {
             const { type, message, statusCode } = categorizeError(fileError);
-            console.error('[Generation] Error retrieving generated video file:', fileError);
+            console.error('[Generation] Error retrieving or storing generated video file:', fileError);
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 status: 'error',
-                error: `Failed to retrieve video file: ${message}`,
+                error: `Failed to retrieve or store video file: ${message}`,
                 type,
                 statusCode
               })}\n\n`)

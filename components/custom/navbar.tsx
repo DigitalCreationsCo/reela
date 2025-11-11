@@ -26,7 +26,7 @@ export const Navbar = ({ session }: any) => {
               <FileImageIcon size={16} />
             </div> */}
             <div className="dark:text-primary truncate md:w-fit text-lg">
-              thats AI
+              Reela
             </div>
             <Image
               src="/images/gemini-logo.png"

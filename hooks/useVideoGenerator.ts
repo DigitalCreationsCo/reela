@@ -17,6 +17,8 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
     async (
       id: string,
       prompt: string,
+      durationSeconds: number,
+      modelName: string,
       onEvent: OnEvent,
       attachments: Array<AttachmentType>,
     ) => {
@@ -25,7 +27,7 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
       try {
         onEvent?.({ type: "status", payload: "initiating" });
 
-        const message: any = { role: "user", content: prompt };
+        const message: any = { role: "user", content: prompt, durationSeconds, modelName };
         if (attachments && attachments.length > 0) {
           message.attachments = attachments.map((a) => ({
             ...(a?.pointer ? { pointer: a.pointer } : {}),
@@ -41,6 +43,7 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
           body: JSON.stringify({
             id,
             messages: [message],
+            modelName,
           }),
         });
         if (!res.ok) {
