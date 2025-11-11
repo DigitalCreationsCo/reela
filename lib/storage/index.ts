@@ -13,9 +13,7 @@ export class GoogleCloudStorageProvider implements StorageProvider {
   private bucketName: string;
 
   constructor(bucketName: string) {
-    this.storage = new Storage({
-      keyFilename: path.join(process.cwd(), 'gen-lang-client-0253509148-1ffb22265ee79.json'),
-    });
+    this.storage = new Storage({ projectId: 'gen-lang-client-0253509148' });
     this.bucketName = bucketName;
   }
 
