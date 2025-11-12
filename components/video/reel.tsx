@@ -4,6 +4,7 @@ import { Progress } from "./progress";
 import { Video } from "@/db/schema";
 import { useFeed } from "@/hooks/useFeed";
 import { generationStatusMessage } from "@/lib/utils";
+import { VideoGenerationStatus } from "@/lib/types";
 
 /**
  * Responsive and minimal UI. No unnecessary padding/margins.
@@ -13,7 +14,7 @@ interface VideoReelProps {
   session: Session | null;
   isGenerating: boolean;
   progress: number;
-  generationStatus: string;
+  generationStatus: VideoGenerationStatus;
   onSaveVideo?: (id: string, url: string, prompt: string) => Promise<void>;
   onDeleteVideo?: (id: string) => void;
   onPlay?: (id: string) => void;
@@ -21,6 +22,7 @@ interface VideoReelProps {
   className?: string;
   fetchFn: any;
   duration: number;
+  error: string | null;
 }
 
 export function VideoReel({
@@ -36,15 +38,28 @@ export function VideoReel({
   className = "",
   fetchFn,
   duration,
+  error,
 }: VideoReelProps) {
   const { containerRef, refs, activeIndex } = useFeed(videos);
   const status = generationStatusMessage(generationStatus);
+  
+  if (generationStatus === "error" && !isGenerating) return (
+    <div className='h-full flex items-center justify-center'>
+      <div className="flex border p-10 rounded">
+        {status + `${error ? (': ' + error) : ''}`}
+      </div>
+    </div>
+  );
 
-  if (!videos.length && !isGenerating) return null;
+  if (!videos.length && !isGenerating) return (
+    <div className=''>
+      {null}
+    </div>
+  );
 
   if (!videos.length && isGenerating) {
     return (
-      <div className="flex items-center justify-center h-48">
+      <div className="flex items-center justify-center min-h-[70vh]">
         <Progress progress={progress} status={status} />
       </div>
     );
@@ -54,7 +69,7 @@ export function VideoReel({
     <div className={`relative h-full w-full ${className}`}>
       <div
         ref={containerRef}
-        className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-[70vh]"
+        className="overflow-y-auto scrollbar-hide snap-y snap-mandatory min-h-[70vh]"
         style={{ scrollBehavior: "auto" }}
       >
         {videos.map((video, i) => {

@@ -204,6 +204,7 @@ export function Chat({
           session={session} 
           isGenerating={isGenerating} 
           generationStatus={generationStatus}
+          error={state.error}
           progress={progress}
           onPlay={(v) => { console.log('play', v); }}
           onDownload={(v) => { console.log('download', v); }}

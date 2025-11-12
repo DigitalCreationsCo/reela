@@ -504,10 +504,10 @@ export const VideoEditor = ({
 
     if (url) {
       return (
-        <div className="relative flex">
+        <div className="">
           <video
             src={url}
-            className="w-full h-[32vw] max-h-[300px] min-h-[140px] object-contain rounded border bg-black"
+            className="w-full h-full object-contain rounded border bg-black"
             controls
             ref={segment.type === "main" ? videoRef : undefined}
             style={{
@@ -665,7 +665,7 @@ export const VideoEditor = ({
                 </div>
               )}
               {confirmMsg && (
-                <div className="mt-2 text-center text-xs" style={{ color: confirmMsg.startsWith("Failed") ? "#dc2626" : "#16a34a" }}>
+                <div className={`mt-2 text-center text-xs ${confirmMsg.startsWith("Failed") ? "text-red-600 font-medium" : "text-green-600"}`}>
                   {confirmMsg}
                 </div>
               )}
