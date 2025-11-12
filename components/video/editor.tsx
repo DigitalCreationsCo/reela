@@ -657,11 +657,10 @@ export const VideoEditor = ({
                 <div className="mt-1 w-full">
                   <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
                     <div
-                      className="bg-blue-500 h-1.5 rounded-full transition-all"
+                      className="bg-blue-500 h-1.5 transition-all"
                       style={{ width: `${streamProgress}%`, minWidth: 8 }}
                     ></div>
                   </div>
-                  <div className="text-xs mt-1 text-center text-blue-700">{streamProgress}% streaming</div>
                 </div>
               )}
               {confirmMsg && (

@@ -69,7 +69,7 @@ export function VideoReel({
     <div className={`relative h-full w-full ${className}`}>
       <div
         ref={containerRef}
-        className="overflow-y-auto scrollbar-hide snap-y snap-mandatory min-h-[70vh]"
+        className="overflow-y-auto scrollbar-hide snap-y snap-mandatory h-full"
         style={{ scrollBehavior: "auto" }}
       >
         {videos.map((video, i) => {
@@ -95,7 +95,7 @@ export function VideoReel({
                 <div className="flex flex-col w-full h-full">
                   {isActive && (
                     <div className="flex flex-1 items-center justify-center">
-                      <div className="w-full max-w-2xl aspect-video">
+                      <div className="w-full max-w-4xl aspect-video">
                         <VideoEditor
                           video={video}
                           fetchFn={fetchFn}

@@ -35,7 +35,8 @@ yarn-error.log*
 .env
 .vercel
 .vscode
-.env*.local
+.env*
+!.env.example
 
 # gcp credentials
 gen-lang-client-0253509148-1ffb22265ee79.json

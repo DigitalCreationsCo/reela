@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbo",
     "debug": "NODE_OPTIONS='--inspect' next dev",
+    "dev:mock": "NODE_ENV=test next dev",
     "build": "tsx db/migrate && next build",
     "start": "next start",
     "lint": "next lint"
