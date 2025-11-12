@@ -1,1 +1,0 @@
-ALTER TABLE "Video" ADD COLUMN "generatedFileName" text NOT NULL;
