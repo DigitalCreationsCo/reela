@@ -2,5 +2,12 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1762948932677,
+      "tag": "0000_cool_microbe",
+      "breakpoints": true
+    }
   ]
 }
