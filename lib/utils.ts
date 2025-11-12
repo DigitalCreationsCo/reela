@@ -175,10 +175,16 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("No 2D context");
         ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
         const dataUrl = canvas.toDataURL(mimeType, 0.92);
         const blob = await (await fetch(dataUrl)).blob();
+
         cleanup();
-        resolve({ dataUrl, blob, mimeType: blob.type });
+        resolve({ 
+          dataUrl, 
+          blob, 
+          mimeType: blob.type || mimeType
+        });
       } catch (e) {
         cleanup();
         reject(e);
@@ -213,7 +219,7 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
 }
 
 /**
- * Converts a Blob, ArrayBuffer, or Uint8Array to a base64 string (raw base64, no data URL prefix).
+ * Converts a Blob, File, ArrayBuffer, or Uint8Array to a base64 string (raw base64, no data URL prefix).
  * Handles both browser and Node.js environments.
  * Provides verbose error handling.
  *
@@ -221,12 +227,22 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
  * @returns Base64 string
  */
 export async function fileToBase64(
-  input: Blob | ArrayBuffer | Uint8Array
+  input: Blob | File | ArrayBuffer | Uint8Array
 ): Promise<string> {
+  // Handle File objects (which are Blobs with additional properties)
+  // Check for File first, as it's more specific than Blob
+  const isFileOrBlob = 
+    (typeof File !== "undefined" && input instanceof File) ||
+    (typeof Blob !== "undefined" && input instanceof Blob) ||
+    (input && typeof input === "object" && 
+     typeof (input as any).arrayBuffer === "function" &&
+     typeof (input as any).type === "string");
+
+  // Browser environment with FileReader
   if (
     typeof window !== "undefined" &&
     typeof FileReader !== "undefined" &&
-    input instanceof Blob
+    isFileOrBlob
   ) {
     return new Promise<string>((resolve, reject) => {
       try {
@@ -273,7 +289,7 @@ export async function fileToBase64(
             )
           );
         };
-        reader.readAsDataURL(input);
+        reader.readAsDataURL(input as Blob);
       } catch (err) {
         reject(
           new Error(
@@ -284,6 +300,20 @@ export async function fileToBase64(
     });
   }
 
+  // Node.js environment - handle Blob/File using arrayBuffer method
+  if (isFileOrBlob && typeof (input as any).arrayBuffer === "function") {
+    try {
+      const arrayBuffer = await (input as Blob).arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return buffer.toString("base64");
+    } catch (err) {
+      throw new Error(
+        `Failed to convert Blob/File to base64 in Node.js: ${(err as Error).message}`
+      );
+    }
+  }
+
+  // Handle ArrayBuffer and TypedArray inputs
   let buffer: Uint8Array;
 
   if (input instanceof ArrayBuffer) {
@@ -298,7 +328,11 @@ export async function fileToBase64(
     typeof ArrayBuffer !== "undefined" &&
     ArrayBuffer.isView(input)
   ) {
-    buffer = new Uint8Array((input as ArrayBufferView).buffer, (input as ArrayBufferView).byteOffset, (input as ArrayBufferView).byteLength);
+    buffer = new Uint8Array(
+      (input as ArrayBufferView).buffer, 
+      (input as ArrayBufferView).byteOffset, 
+      (input as ArrayBufferView).byteLength
+    );
   } else {
     const actualType =
       input === null
@@ -307,10 +341,11 @@ export async function fileToBase64(
         ? input.constructor?.name || typeof input
         : typeof input;
     throw new Error(
-      `Unsupported fileToBase64 input type: ${actualType}. Only Blob, ArrayBuffer, Uint8Array, and TypedArray views are supported.`
+      `Unsupported fileToBase64 input type: ${actualType}. Only Blob, File, ArrayBuffer, Uint8Array, and TypedArray views are supported.`
     );
   }
 
+  // Convert buffer to base64
   try {
     if (
       typeof Buffer !== "undefined" &&
@@ -319,8 +354,10 @@ export async function fileToBase64(
       return Buffer.from(buffer).toString("base64");
     }
   } catch (err) {
+    // Fall through to btoa
   }
 
+  // Browser fallback using btoa
   try {
     let binary = "";
     for (let i = 0; i < buffer.length; i++) {
@@ -332,4 +369,4 @@ export async function fileToBase64(
       `Failed to convert buffer to base64 string using browser btoa: ${(err as Error).message}`
     );
   }
-}
+};

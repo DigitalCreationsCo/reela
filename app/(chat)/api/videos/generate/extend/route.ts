@@ -384,14 +384,7 @@ export async function POST(request: Request) {
           const { type, message, statusCode } = categorizeError(error);
           console.error("[Generation] Error in stream start handler:", error);
 
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({
-              status: "error",
-              error: message,
-              type,
-              statusCode
-            })}\n\n`)
-          );
+          controller.error(error);
           controller.close();
         }
       },

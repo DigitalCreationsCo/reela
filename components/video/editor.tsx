@@ -247,16 +247,17 @@ export const VideoEditor = ({
       
       const segmentUrl = currentSegment.url!;
 
-      const { blob: frameBlob, mimeType } = await extractFrameDataUrl(
+      const { blob: frameBlob, mimeType: extractedMimeType } = await extractFrameDataUrl(
         segmentUrl,
         extensionPromptOpen === "start" ? "start" : "end",
         "image/jpeg"
       );
 
+      console.debug("[VideoEditor] Frame blob created, building FormData");
       const formData = new FormData();
       formData.append("prompt", extensionPromptValue);
       formData.append("referenceFrame", frameBlob, "frame.jpg");
-      formData.append("mimeType", mimeType);
+      formData.append("mimeType", extractedMimeType);
       formData.append("side", extensionPromptOpen as "start" | "end");
       formData.append("videoId", video.fileId);
       formData.append("durationSeconds", duration.toString());
