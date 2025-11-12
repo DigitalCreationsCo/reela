@@ -28,6 +28,7 @@ export const VideoEditor = ({
   duration: number;
 }) => {
   
+  console.log('[editor] video: ', video);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("main");
@@ -72,15 +73,17 @@ export const VideoEditor = ({
         thumbUrl = "";
       }
       if (!ignore) {
-        setSegments([
-          {
+        const newSegment: Segment = {
             key: "main",
             url: streamUrl,
             type: "main",
             thumbUrl,
             label: "Main",
             videoData: video,
-          },
+          };
+        console.log('[editor] newSegment: ', newSegment);
+        setSegments([
+          newSegment
         ]);
         setSelectedSegment("main");
       }

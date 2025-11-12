@@ -2,5 +2,19 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1762920751567,
+      "tag": "0000_strange_sinister_six",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1762921466215,
+      "tag": "0001_sloppy_nemesis",
+      "breakpoints": true
+    }
   ]
 }

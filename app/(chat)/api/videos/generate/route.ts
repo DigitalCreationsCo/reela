@@ -21,9 +21,9 @@ import { NextResponse } from "next/server";
 import { GenerateVideosOperation, GenerateVideosParameters } from "@google/genai";
 import { AttachmentType } from "@/lib/types";
 import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
-import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
 import { Video } from "@/db/schema";
 import { insertVideo } from "@/db/queries"; // Assuming insertVideo exists or will be created
+import { objectStorageManager } from "@/lib/storage";
 
 // Error types for better categorization
 enum ErrorType {
@@ -148,9 +148,6 @@ export async function POST(request: Request) {
       await request.json();
 
     const session = await auth();
-
-    const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos'); // Use an environment variable for bucket name
-    const objectStorageManager = new ObjectStorageManager(gcsProvider);
 
     // Uncommented authentication check
     // if (!session || !session.user) {
@@ -724,6 +721,7 @@ export async function POST(request: Request) {
               const newVideo = new Video({
                 id: generateUUID(),
                 fileId: fileId,
+                generatedFileName: generatedVideoFile.name,
                 uri: storedVideoUri,
                 downloadUri: downloadUri,
                 prompt: prompt,
@@ -754,20 +752,30 @@ export async function POST(request: Request) {
 
               // Generate a signed URL for download with 30 min expiration
               downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 30); // 30 minutes expiration for unsigned users
-              console.log('[Generation] Temporary video saved to GCS for unsigned user:', fileId);
+              console.log('[Generation] Unsigned user saved temporary video to GCS:', fileId);
             }
+
+            const video = new Video({
+              fileId: fileId,
+              uri: storedVideoUri,
+              downloadUri: downloadUri,
+              isTemporary: isTemporary,
+              prompt,
+              id: generateUUID(),
+              generatedFileName: generatedVideoFile.name,
+              format: videoContentType,
+              fileSize: videoBuffer.byteLength,
+              status: "ready",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              expiresAt: expiresAt,
+            });
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 status: 'complete',
                 progress: 100,
-                video: {
-                  fileId: fileId,
-                  uri: storedVideoUri,
-                  downloadUri: downloadUri,
-                  isTemporary: isTemporary,
-                  expiresAt: expiresAt?.toISOString() || null,
-                }
+                video
               })}\n\n`)
             );
 

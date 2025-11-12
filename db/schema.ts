@@ -50,6 +50,7 @@ export type Reservation = InferSelectModel<typeof reservation>;
 export const video = pgTable("Video", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   fileId: varchar("fileId", { length: 40 }).notNull(),
+  generatedFileName: text("generatedFileName").notNull(),
   uri: text("uri").notNull(),
   downloadUri: text("downloadUri"),
   metadata: json("metadata"),
@@ -98,12 +99,14 @@ export class Video implements InferSelectModel<typeof video> {
   isTemporary: boolean; // New field
   parentId: string | null; // New field for chaining videos
   chainOrder: number | null; // New field for ordering videos in a chain
+  generatedFileName: string;
 
   constructor({
     id,
     uri,
     prompt,
     fileId,
+    generatedFileName,
     downloadUri = null,
     metadata = null,
     format = null,
@@ -122,7 +125,7 @@ export class Video implements InferSelectModel<typeof video> {
     expiresAt = null, // New field
     isTemporary = false, // New field
     parentId = null, // New field
-    chainOrder = null, // New field
+    chainOrder = null, // New field,
   }: Partial<Video> & { uri: string; fileId: string; prompt: string }) { // userId and author are now optional in constructor
     this.id = id ?? generateUUID();
     this.uri = uri;
@@ -147,6 +150,7 @@ export class Video implements InferSelectModel<typeof video> {
     this.isTemporary = isTemporary; // Assign new field
     this.parentId = parentId; // Assign new field
     this.chainOrder = chainOrder; // Assign new field
+    this.generatedFileName = generatedFileName!;
   }
 }
 

@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
-import { getVideoByFileId } from "@/db/queries"; // You'll need this query
+import { objectStorageManager } from "@/lib/storage";
+import { getVideoByFileId } from "@/db/queries";
 
 const REMOTE_VIDEO_BASE_URL = process.env.REMOTE_VIDEO_BASE_URL || "http://localhost:3000/";
 
@@ -42,14 +42,7 @@ export async function GET(
     }
   }
 
-  // Production mode - use GCS with Gen AI fallback
-  const gcsProvider = new GoogleCloudStorageProvider(
-    process.env.GCS_BUCKET_NAME || 'reela-videos'
-  );
-  const objectStorageManager = new ObjectStorageManager(gcsProvider);
-
   try {
-    // STRATEGY 1: Try to get from GCS first (permanent storage)
     console.log(`[Stream] Attempting to fetch from GCS: ${fileId}`);
     try {
       const videoBuffer = await objectStorageManager.getVideo(fileId);
@@ -70,9 +63,16 @@ export async function GET(
       // STRATEGY 2: Fallback to Gen AI files (for recently generated videos)
       const ai = (await import("@/lib/gemini")).default;
       
+      const videoRecord = await getVideoByFileId({ fileId });
+
+      if (!videoRecord) {
+        console.error('[Stream] Video record not found in DB for fileId:', fileId);
+        throw new Error('Video record not found in database');
+      }
+
       try {
         const file = await ai.files.get({
-          name: fileId,
+          name: videoRecord.generatedFileName,
         });
 
         const downloadUrl = new URL(file.downloadUri!);
@@ -96,14 +96,15 @@ export async function GET(
 
         console.log(`[Stream] Successfully retrieved from Gen AI files, size: ${arrayBuffer.byteLength}`);
 
-        // IMPORTANT: Upload to GCS for future requests
         console.log(`[Stream] Uploading to GCS for future requests...`);
         try {
+
+          const isTemporary = !!session?.user?.id;
           await objectStorageManager.uploadVideo(
-            fileId,
+            videoRecord.fileId,
             Buffer.from(arrayBuffer),
             'video/mp4',
-            false // Not temporary
+            isTemporary
           );
           console.log(`[Stream] Successfully uploaded to GCS`);
         } catch (uploadError) {

@@ -1,14 +1,13 @@
 import { Storage } from '@google-cloud/storage';
-import path from 'path';
 
-export interface StorageProvider {
+interface StorageProvider {
   uploadFile(fileId: string, data: Buffer, contentType: string, isTemporary: boolean): Promise<string>;
   getFile(fileId: string): Promise<Buffer>;
   getSignedUrl(fileId: string, expirationMinutes: number): Promise<string>;
   deleteFile(fileId: string): Promise<void>;
 }
 
-export class GoogleCloudStorageProvider implements StorageProvider {
+class GoogleCloudStorageProvider implements StorageProvider {
   private storage: Storage;
   private bucketName: string;
 
@@ -53,7 +52,7 @@ export class GoogleCloudStorageProvider implements StorageProvider {
   }
 }
 
-export class ObjectStorageManager {
+class ObjectStorageManager {
   private provider: StorageProvider;
 
   constructor(provider: StorageProvider) {
@@ -76,3 +75,6 @@ export class ObjectStorageManager {
     return this.provider.deleteFile(fileId);
   }
 }
+
+const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos'); // Use an environment variable for bucket name
+export const objectStorageManager = new ObjectStorageManager(gcsProvider);
