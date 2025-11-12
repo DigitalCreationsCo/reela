@@ -1,7 +1,14 @@
-import { AttachmentType } from "@/lib/types";
+import { Video } from "@/db/schema";
+import { AttachmentType, VideoGenerationStatus } from "@/lib/types";
 import { useRef, useCallback } from "react";
 
-type OnEvent = (event: { type: 'status' | 'progress' | 'complete' | 'error' | 'aborted'; payload?: any }) => void;
+type OnEvent = (
+  event: { type: 'status'; payload: VideoGenerationStatus } |
+         { type: 'progress'; payload: number } |
+         { type: 'complete'; payload: Video } |
+         { type: 'error'; payload: string } |
+         { type: 'aborted' }
+) => void;
 
 export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch | ((...args:any[]) => Promise<any>) } = {}) {
   const controllerRef = useRef<AbortController | null>(null);

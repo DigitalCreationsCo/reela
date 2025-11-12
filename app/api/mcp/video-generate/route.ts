@@ -5,10 +5,10 @@ import { GenerateVideosOperation, GenerateVideosParameters } from "@google/genai
 import { AttachmentType } from "@/lib/types";
 import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
 import { fileToBase64, generateUUID } from "@/lib/utils";
-import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
 import { auth } from "@/auth";
 import { Video } from "@/db/schema";
 import { insertVideo } from "@/db/queries";
+import { objectStorageManager } from "@/lib/storage";
 
 // Error types for better categorization
 enum ErrorType {
@@ -140,9 +140,6 @@ const handler = createMcpHandler(
       async ({ prompt, modelName, abortSignal }: any) => {
         try {
           const session = await auth();
-
-          const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos');
-          const objectStorageManager = new ObjectStorageManager(gcsProvider);
 
           let videoGenOptions: GenerateVideosParameters = {
             model: modelName,

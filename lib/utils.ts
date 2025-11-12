@@ -150,7 +150,7 @@ export const generationStatusMessage = (status: string): string => {
 };
 
 // Util: get the frame as JPEG dataURL from a video URL
-export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" = "start"): Promise<{ dataUrl: string; blob: Blob }> {
+export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" = "start", mimeType = "image/jpeg"): Promise<{ dataUrl: string; blob: Blob; mimeType: string; }> {
   return new Promise((resolve, reject) => {
     const videoEl = document.createElement("video");
     videoEl.src = videoUrl;
@@ -175,10 +175,10 @@ export async function extractFrameDataUrl(videoUrl: string, at: "start" | "end" 
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("No 2D context");
         ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+        const dataUrl = canvas.toDataURL(mimeType, 0.92);
         const blob = await (await fetch(dataUrl)).blob();
         cleanup();
-        resolve({ dataUrl, blob });
+        resolve({ dataUrl, blob, mimeType: blob.type });
       } catch (e) {
         cleanup();
         reject(e);

@@ -9,9 +9,9 @@ import {
   getLatestChainOrder,
   insertVideo,
 } from "@/db/queries";
-import { GoogleCloudStorageProvider, ObjectStorageManager } from "@/lib/storage";
-import { generateUUID } from "@/lib/utils";
+import { fileToBase64, generateUUID } from "@/lib/utils";
 import { Video } from "@/db/schema";
+import { objectStorageManager } from "@/lib/storage";
 
 // Error types for better categorization
 enum ErrorType {
@@ -84,6 +84,7 @@ export async function POST(request: Request) {
 
     const prompt = formData.get("prompt");
     const referenceFrame = formData.get("referenceFrame");
+    const mimeType = formData.get("mimeType") as string;
     const side = formData.get("side");
     const videoId = formData.get("videoId");
 
@@ -117,13 +118,13 @@ export async function POST(request: Request) {
             encoder.encode(`data: ${JSON.stringify({ status: 'initiating', progress: 0 })}\n\n`)
           );
 
-          // The Google SDK's generation interface would have to be adapted for extension with a frame.
+          const imageBytes = await fileToBase64(referenceFrame as Blob);
+
           currentOperation = await ai.models.generateVideos({
-            // model: 'veo-3.0-fast-generate-001',
-            model: 'veo-2.0-generate-001',
+            model: 'veo-3.1-generate-preview',
             source: {
               prompt,
-              image: referenceFrame as any
+              image: { imageBytes, mimeType }
             },
             config: {
               numberOfVideos: 1,
@@ -254,8 +255,11 @@ export async function POST(request: Request) {
               encoder.encode(`data: ${JSON.stringify({ status: 'ready', progress: 90 })}\n\n`)
             );
 
-            // Fetch the actual video content from the downloadUri
-            const videoDownloadResponse = await fetch(generatedVideoFile.downloadUri!); 
+
+            const downloadUrl = new URL(generatedVideoFile.downloadUri!);
+            downloadUrl.searchParams.set('key', process.env.GOOGLE_GENERATIVE_AI_API_KEY!);
+
+            const videoDownloadResponse = await fetch(downloadUrl.toString());
             if (!videoDownloadResponse.ok) {
               throw new Error(`Failed to fetch generated video content: ${videoDownloadResponse.statusText}`);
             }
@@ -264,15 +268,13 @@ export async function POST(request: Request) {
 
             const fileId = generateUUID(); // Generate a unique fileId for storage
 
-            const gcsProvider = new GoogleCloudStorageProvider(process.env.GCS_BUCKET_NAME || 'reela-videos');
-            const objectStorageManager = new ObjectStorageManager(gcsProvider);
-
             let storedVideoUri: string;
             let downloadUri: string | null = null;
             let expiresAt: Date | null = null;
             let isTemporary = false;
             let newChainOrder: number | null = null;
 
+            let video: Video;
             if (session?.user) {
               // User is signed in: store permanently, save to DB
               storedVideoUri = await objectStorageManager.uploadVideo(
@@ -300,7 +302,7 @@ export async function POST(request: Request) {
                 newChainOrder = 0;
               }
 
-              const newVideo = new Video({
+              video = new Video({
                 id: generateUUID(),
                 fileId: fileId,
                 uri: storedVideoUri,
@@ -317,8 +319,8 @@ export async function POST(request: Request) {
                 parentId: parentVideo?.fileId || null, // Link to parent video by its fileId
                 chainOrder: newChainOrder,
               });
-              await insertVideo(newVideo); // Save video metadata to database
-              console.log("[Generation] Extension video saved to DB and GCS for signed-in user:", newVideo.id);
+              await insertVideo(video); // Save video metadata to database
+              console.log("[Generation] Extension video saved to DB and GCS for signed-in user:", video.id);
 
             } else {
               // User is not signed in: store temporarily (30 min expiration), do not save to DB
@@ -329,27 +331,37 @@ export async function POST(request: Request) {
                 fileId,
                 Buffer.from(videoBuffer),
                 videoContentType,
-                true // Temporary
+                isTemporary || true
               );
 
               // Generate a signed URL for download with 30 min expiration
               downloadUri = await objectStorageManager.getSignedVideoUrl(fileId, 30); // 30 minutes expiration for unsigned users
               console.log("[Generation] Temporary extension video saved to GCS for unsigned user:", fileId);
+
+              video = new Video({
+                fileId: fileId,
+                uri: storedVideoUri,
+                downloadUri: downloadUri,
+                isTemporary: isTemporary,
+                prompt,
+                id: generateUUID(),
+                generatedFileName: generatedVideoFile.name,
+                format: videoContentType,
+                fileSize: videoBuffer.byteLength,
+                status: "ready",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                expiresAt: expiresAt,
+                parentId: videoId, // Return parentId for client-side chaining
+                chainOrder: newChainOrder,
+              });
             }
 
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 status: "complete",
                 progress: 100,
-                video: {
-                  fileId: fileId,
-                  uri: storedVideoUri,
-                  downloadUri: downloadUri,
-                  isTemporary: isTemporary,
-                  expiresAt: expiresAt?.toISOString() || null,
-                  parentId: videoId, // Return parentId for client-side chaining
-                  chainOrder: newChainOrder,
-                }
+                video,
               })}\n\n`)
             );
 

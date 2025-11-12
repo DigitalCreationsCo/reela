@@ -116,28 +116,28 @@ export function Chat({
       await generate(id, prompt, durationSeconds, model, (evt) => {
         switch (evt.type) {
           case "status":
-            actions.setStatus(evt.payload as any);
+            actions.setStatus(evt.payload);
             break;
           case "progress":
-            actions.setProgress(evt.payload as number);
+            actions.setProgress(evt.payload);
             break;
           case "complete": {
-            const video = evt.payload;
-            const item = new Video({
-              uri: video.uri,
-              fileId: (video.name || "").replace("files/", ""),
-              downloadUri: video.downloadUri || null,
-              prompt,
-              author: session?.user?.name || "Anonymous",
-              userId: session?.user?.id || "anonymous",
-              format: "mp4",
-              fileSize: Number(video.sizeBytes || 0),
-              status: "ready" as const,
-              createdAt: video.createTime ? new Date(video.createTime) : new Date(),
-              // Optionally include attachments here if your Video model supports them
-              // attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
-            });
-            actions.addVideo(item);
+            const video = new Video(evt.payload);
+            // const item = new Video({
+            //   uri: video.uri,
+            //   fileId: (video.name || "").replace("files/", ""),
+            //   downloadUri: video.downloadUri || null,
+            //   prompt,
+            //   author: session?.user?.name || "Anonymous",
+            //   userId: session?.user?.id || "anonymous",
+            //   format: "mp4",
+            //   fileSize: Number(video.sizeBytes || 0),
+            //   status: "ready" as const,
+            //   createdAt: video.createTime ? new Date(video.createTime) : new Date(),
+            //   // Optionally include attachments here if your Video model supports them
+            //   // attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined,
+            // });
+            actions.addVideo(video);
             actions.setProgress(100);
             actions.setStatus("complete");
             actions.setIsGenerating(false);

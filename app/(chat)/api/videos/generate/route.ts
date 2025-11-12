@@ -747,7 +747,7 @@ export async function POST(request: Request) {
                 fileId,
                 Buffer.from(videoBuffer),
                 videoContentType,
-                true // Temporary
+                isTemporary || true
               );
 
               // Generate a signed URL for download with 30 min expiration

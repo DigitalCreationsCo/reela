@@ -76,7 +76,7 @@ export const Navbar = ({ session }: any) => {
               className="flex items-center gap-2"
               >
                 <LogInIcon size={16} />
-                Log in to keep your videos
+                Log in to save your videos
               </Button>
             )}
       

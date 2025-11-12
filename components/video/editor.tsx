@@ -67,7 +67,7 @@ export const VideoEditor = ({
       } catch {}
       let thumbUrl = "";
       try {
-        const { dataUrl } = await extractFrameDataUrl(streamUrl, "start");
+        const { dataUrl } = await extractFrameDataUrl(streamUrl, "start", "image/jpeg");
         thumbUrl = dataUrl;
       } catch {
         thumbUrl = "";
@@ -247,14 +247,16 @@ export const VideoEditor = ({
       
       const segmentUrl = currentSegment.url!;
 
-      const { blob: frameBlob } = await extractFrameDataUrl(
+      const { blob: frameBlob, mimeType } = await extractFrameDataUrl(
         segmentUrl,
-        extensionPromptOpen === "start" ? "start" : "end"
+        extensionPromptOpen === "start" ? "start" : "end",
+        "image/jpeg"
       );
 
       const formData = new FormData();
       formData.append("prompt", extensionPromptValue);
       formData.append("referenceFrame", frameBlob, "frame.jpg");
+      formData.append("mimeType", mimeType);
       formData.append("side", extensionPromptOpen as "start" | "end");
       formData.append("videoId", video.fileId);
       formData.append("durationSeconds", duration.toString());
@@ -374,7 +376,7 @@ export const VideoEditor = ({
       const newSegmentUrl = URL.createObjectURL(newBlob);
       let extThumb = "";
       try {
-        const { dataUrl: thumb } = await extractFrameDataUrl(newSegmentUrl, "start");
+        const { dataUrl: thumb } = await extractFrameDataUrl(newSegmentUrl, "start", "image/jpeg");
         extThumb = thumb;
       } catch (e) {
         console.warn("Failed to extract thumbnail:", e);
