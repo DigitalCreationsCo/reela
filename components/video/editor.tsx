@@ -673,9 +673,9 @@ export const VideoEditor = ({
         )}
       </div>
 
-      {segments.length > 1 && (
+      {segments.length > 0 && (
         <div
-          className="flex flex-row items-center mt-3 gap-1 justify-center"
+          className="flex flex-row items-center justify-center"
           aria-label="Video Segments"
         >
           {segments.map((segment) => (
@@ -714,10 +714,9 @@ const VideoSegmentPill = ({
   onClick: () => void;
 }) => (
   <button
-    className={`flex flex-col items-center border ${selected ? "border-blue-600" : "border-gray-300"} rounded-full px-1 py-0.5 bg-background shadow-xs text-xs transition min-w-[38px] ${type === "extension" ? "opacity-90" : ""}`}
+    className={`flex flex-col items-center border ${selected ? "border-blue-600" : "border-gray-300"} rounded-full bg-background shadow-xs text-xs transition min-w-[38px] ${type === "extension" ? "opacity-90" : ""}`}
     style={{
       outline: selected ? "2px solid #2563eb" : "",
-      marginRight: 4,
     }}
     onClick={onClick}
     type="button"
