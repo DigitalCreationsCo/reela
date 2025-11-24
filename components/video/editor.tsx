@@ -1,6 +1,6 @@
 import { LoaderIcon, PlayIcon } from "lucide-react";
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { PlusButton } from "../ui/plus-button";
 import { StopIcon } from "../custom/icons";
 import { extractFrameDataUrl, generateUUID } from "@/lib/utils";

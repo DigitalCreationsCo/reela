@@ -48,6 +48,7 @@ export function MultimodalInput({
   availableModels,
   modelName,
   setModelName,
+  session,
 }: {
   input: string;
   setInput: (value: string) => void;
@@ -65,6 +66,7 @@ export function MultimodalInput({
   availableModels: Array<{ name: string; id: string; durations: number[]; defaultDuration: number }>;
   modelName: string;
   setModelName: Dispatch<SetStateAction<string>>;
+  session?: any;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -267,6 +269,7 @@ export function MultimodalInput({
       </div>
 
       <Textarea
+        disabled={!session?.user}
         ref={textareaRef}
         placeholder="What will you create?"
         value={input}
@@ -292,7 +295,8 @@ export function MultimodalInput({
           onClick={(event) => {
             event.preventDefault();
             stop();
-          }}
+          } }
+          disabled={!session?.user}
         >
           <StopIcon size={14} />
         </Button>
@@ -303,7 +307,7 @@ export function MultimodalInput({
             event.preventDefault();
             submitForm(event);
           }}
-          disabled={input.length === 0 || uploadQueue.length > 0}
+          disabled={input.length === 0 || uploadQueue.length > 0 || !session?.user}
         >
           <ArrowUpIcon size={14} />
         </Button>

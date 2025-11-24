@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { Toaster } from "sonner";
 import { Navbar } from "@/components/custom/navbar";
+import { Sidebar } from "@/components/custom/sidebar";
 import { ThemeProvider } from "@/components/custom/theme-provider";
 import { auth } from "@/auth";
 import "./globals.css";
@@ -27,8 +28,11 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <Navbar session={session} />
-          <Toaster position="top-center" />
-          {children}
+          <Sidebar />
+            <Toaster position="top-center" />
+            <main className="">
+              { children }
+            </main>
         </ThemeProvider>
       </body>
     </html>

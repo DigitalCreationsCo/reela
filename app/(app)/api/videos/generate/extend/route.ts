@@ -10,7 +10,7 @@ import {
   insertVideo,
 } from "@/db/queries";
 import { fileToBase64, generateUUID } from "@/lib/utils";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { objectStorageManager } from "@/lib/storage";
 
 // Error types for better categorization

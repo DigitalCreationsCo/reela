@@ -24,12 +24,12 @@ export default async function Page({ params }: { params: any }) {
   const session = await auth();
 
   if (!session || !session.user) {
-    return notFound();
+    return new Response("Unauthorized!", { status: 401 });
   }
 
   if (session.user.id !== chat.userId) {
     return notFound();
   }
 
-  return <PreviewChat id={chat.id} session={session} initialMessages={chat.messages} />;
+  return <PreviewChat mode="scene-generator" id={chat.id} session={session} initialMessages={chat.messages} />;
 }

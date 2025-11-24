@@ -15,13 +15,13 @@ import {
   getReservationById,
   saveChat,
 } from "@/db/queries";
-import { fileToBase64, generateUUID } from "@/lib/utils";
+import { fileToBase64, generateUUID, GenerationMode, getGenerationModePrompt } from "@/lib/utils";
 import ai from "@/lib/gemini";
 import { NextResponse } from "next/server";
 import { GenerateVideosOperation, GenerateVideosParameters } from "@google/genai";
 import { AttachmentType } from "@/lib/types";
 import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { insertVideo } from "@/db/queries"; // Assuming insertVideo exists or will be created
 import { objectStorageManager } from "@/lib/storage";
 
@@ -144,16 +144,14 @@ async function fetchAttachment(url: string, expectedType: string): Promise<Array
 
 export async function POST(request: Request) {
   try {
-    const { id, messages, modelName }: { id: string; messages: Array<any>; modelName?: string } =
+    const { id, messages, modelName, mode }: { id: string; messages: Array<any>; modelName?: string; mode: GenerationMode; } =
       await request.json();
 
     const session = await auth();
 
-    // Uncommented authentication check
-    // if (!session || !session.user) {
-    //   // For now, we allow unauthenticated users to generate temporary videos.
-    //   // The logic below will handle temporary storage.
-    // }
+    if (!session || !session.user) {
+      return Response.json("Unauthorized!", { status: 401 });
+    }
 
     if (!messages || !messages.length || !messages[messages.length - 1]?.content) {
       return NextResponse.json(
@@ -176,11 +174,13 @@ export async function POST(request: Request) {
           );
 
           const lastMessage = messages[messages.length - 1];
-          const prompt = lastMessage.content;
+          const input = lastMessage.content;
           
-          if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+          if (!input || typeof input !== 'string' || input.trim().length === 0) {
             throw new Error('Prompt cannot be empty');
           }
+
+          const prompt = getGenerationModePrompt(mode, input);
 
           let attachments = lastMessage.attachments as Array<AttachmentType> || [];
           let videoGenOptions: GenerateVideosParameters;
@@ -726,6 +726,7 @@ export async function POST(request: Request) {
                 downloadUri: downloadUri,
                 prompt: prompt,
                 userId: session.user.id,
+                chatId: id,
                 author: session.user.name || "Anonymous",
                 format: videoContentType,
                 fileSize: videoBuffer.byteLength,
@@ -735,7 +736,10 @@ export async function POST(request: Request) {
                 updatedAt: new Date(),
                 // Other metadata can be extracted from generatedVideo if available
               });
-              await insertVideo(newVideo); // Save video metadata to database
+              const savedVideo = await insertVideo(newVideo); // Save video metadata to database
+              if (savedVideo && savedVideo.id) {
+                await saveChat({ id, messages, userId: session.user.id });
+              }
               console.log('[Generation] Video saved to DB and GCS for signed-in user:', newVideo.id);
 
             } else {

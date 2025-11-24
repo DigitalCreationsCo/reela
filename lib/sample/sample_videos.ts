@@ -1,4 +1,4 @@
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 
 export const SAMPLE_VIDEOS: any[] = [
   {

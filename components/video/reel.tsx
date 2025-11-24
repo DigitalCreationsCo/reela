@@ -1,10 +1,12 @@
 import { VideoEditor } from "./editor";
 import { Session } from "next-auth";
 import { Progress } from "./progress";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { useFeed } from "@/hooks/useFeed";
 import { generationStatusMessage } from "@/lib/utils";
 import { VideoGenerationStatus } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 /**
  * Responsive and minimal UI. No unnecessary padding/margins.
@@ -40,8 +42,18 @@ export function VideoReel({
   duration,
   error,
 }: VideoReelProps) {
+  const router = useRouter();
   const { containerRef, refs, activeIndex } = useFeed(videos);
   const status = generationStatusMessage(generationStatus);
+
+  useEffect(() => {
+    if (videos && videos.length > 0 && activeIndex !== null) {
+      const activeVideo = videos[activeIndex];
+      if (activeVideo && activeVideo.chatId) {
+        router.push(`/chat/${activeVideo.chatId}`);
+      }
+    }
+  }, [activeIndex, videos, router]);
   
   if (generationStatus === "error" && !isGenerating) return (
     <div className='h-full flex items-center justify-center'>
@@ -52,9 +64,9 @@ export function VideoReel({
   );
 
   if (!videos.length && !isGenerating) return (
-    <div className=''>
+    <>
       {null}
-    </div>
+    </>
   );
 
   if (!videos.length && isGenerating) {

@@ -6,12 +6,14 @@ import { MultimodalInput } from "./multimodal-input";
 import { Overview } from "./overview";
 import { Session } from "next-auth";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { VideoReel } from "../video/reel";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { useVideoState } from "@/hooks/useVideoState";
 import { useVideoGenerator } from "@/hooks/useVideoGenerator";
 import { mockAsyncFetch } from "@/lib/mock-async-fetch";
 import { AttachmentType } from "@/lib/types";
+import { createChat, saveChat } from "@/app/actions";
 
 // WebSocket / connection error indicator state
 function useWebSocketConnectionStatus() {
@@ -66,13 +68,18 @@ export function Chat({
   id,
   initialMessages,
   session,
+  description,
+  mode,
 }: {
   id: string;
   initialMessages: Array<Message>;
-  session: Session | null;
+    session: Session | null;
+    description?: string;
+    mode: string;
 }) {
+  const router = useRouter();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>(initialMessages);
   const [attachments, setAttachments] = useState<Array<AttachmentType>>([]);
   const [modelName, setModelName] = useState<string>("veo-3.1-generate-preview"); // Default model
   const [duration, setDuration] = useState<number>(8); // Default duration to 8
@@ -102,7 +109,7 @@ export function Chat({
   const append = useCallback((m: any) => setMessages(prev => [...prev, m]), []);
 
   const handleGenerateVideo = useCallback(
-    async (prompt: string, durationSeconds: number, model: string, extraAttachments?: Array<AttachmentType>) => {
+    async (prompt: string, model: string, durationSeconds: number, mode: string, extraAttachments?: Array<AttachmentType>) => {
       setIsGenerating(true);
       setStatus("initiating");
       setProgress(0);
@@ -154,27 +161,42 @@ export function Chat({
             actions.setStatus("idle");
             break;
         }
-      }, attachmentsToSend); // <-- Pass as 4th param if generate supports it, or bundle in request
+      }, mode, attachmentsToSend); // <-- Pass as 4th param if generate supports it, or bundle in request
     },
-    [actions, generate, session, attachments]
+    [actions, generate, mode, session, attachments]
   );
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e?.preventDefault();
+
+    if (!session?.user?.id) {
+      return;
+    }
+
     const content = input.trim();
     if (!content) {
       return;
     }
 
-    append({
+    if (!mode) return;
+
+    const newMessage = {
       role: "user",
       content,
       durationSeconds: duration,
       modelName: modelName,
-    });
+    };
+    
+    append(newMessage);
     setInput("");
-    await handleGenerateVideo(content, duration, modelName);
-  }, [input, handleGenerateVideo, append, duration, modelName]);
+
+    const genre = window.location.pathname.split("/").pop();
+
+    await saveChat({ id, messages: [...messages, newMessage], userId: session.user.id, genre });
+    router.push(`/chat/${id}`);
+
+    await handleGenerateVideo(content, modelName, duration, mode);
+  }, [input, handleGenerateVideo, append, duration, mode, modelName, id, messages, router, session?.user?.id]);
 
   const stop = useCallback(() => {
     abort();
@@ -184,33 +206,29 @@ export function Chat({
   const wsError = useWebSocketConnectionStatus();
 
   return (
-    <div className="flex flex-col h-[92vh] justify-center bg-background">
-      <div className="flex flex-col mx-auto w-full h-full">
+    <div className="flex-1 w-full flex flex-col h-[100vh] justify-center bg-background">
+      <div className="flex flex-col mx-auto w-full h-full sm:pl-64">
         {wsError ? (
           <div className="flex flex-row items-center justify-center w-full p-4 bg-red-100 text-red-800 border border-red-400 rounded mb-4 text-center select-none">
             <span className="mx-2">{wsError}</span>
           </div>
-        ) : null}
-        {
-          !videos.length && !isGenerating && !messages.length && (
-            <div className="flex-1 flex items-center justify-center h-200">
-              <Overview />
-            </div>
-          ) || null
-        }
-
-        <VideoReel 
-          videos={videos} 
-          session={session} 
-          isGenerating={isGenerating} 
-          generationStatus={generationStatus}
-          error={state.error}
-          progress={progress}
-          onPlay={(v) => { console.log('play', v); }}
-          onDownload={(v) => { console.log('download', v); }}
-          fetchFn={fetchFn}
-          duration={duration}
-        />
+        ) : null }
+        
+        <div className="flex-1 flex items-center justify-center h-full">
+          { !videos.length && !isGenerating && !messages.length && <Overview session={ session } description={description} /> || null }
+          <VideoReel 
+            videos={videos} 
+            session={session} 
+            isGenerating={isGenerating} 
+            generationStatus={generationStatus}
+            error={state.error}
+            progress={progress}
+            onPlay={(v) => { console.log('play', v); }}
+            onDownload={(v) => { console.log('download', v); }}
+            fetchFn={fetchFn}
+            duration={duration}
+            />
+        </div>
 
         <div className="p-4">
           <form 
@@ -231,7 +249,8 @@ export function Chat({
               setDuration={setDuration}
               availableModels={availableModels}
               modelName={modelName}
-              setModelName={setModelName}
+              setModelName={ setModelName }
+              session={session}
             />
           </form>
         </div>

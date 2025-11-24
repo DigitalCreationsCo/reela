@@ -53,7 +53,7 @@ export const History = ({ user }: { user: User | undefined }) => {
     data: history,
     isLoading,
     mutate,
-  } = useSWR<Array<Chat>>(user ? "/api/history" : null, fetcher, {
+  } = useSWR<Array<Chat>>(user ? `/api/history?genre=${pathname.split("/").pop()}` : null, fetcher, {
     fallbackData: [],
   });
 
@@ -88,8 +88,8 @@ export const History = ({ user }: { user: User | undefined }) => {
   return (
     <>
       <Button
-        variant="outline"
-        className="p-1.5 h-fit"
+        variant="ghost"
+        className="p-2.5 h-fit"
         onClick={() => {
           setIsHistoryVisible(true);
         }}
@@ -115,7 +115,7 @@ export const History = ({ user }: { user: User | undefined }) => {
 
           <div className="text-sm flex flex-row items-center justify-between">
             <div className="flex flex-row gap-2">
-              <div className="dark:text-zinc-300">History</div>
+              <div className="dark:text-zinc-300">Your history</div>
 
               <div className="dark:text-zinc-400 text-zinc-500">
                 {history === undefined ? "loading" : history.length} chats

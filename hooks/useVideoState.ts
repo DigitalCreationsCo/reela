@@ -1,4 +1,4 @@
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { VideoGenerationStatus } from "@/lib/types";
 import { useReducer, useCallback } from "react";
 

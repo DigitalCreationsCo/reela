@@ -8,6 +8,9 @@ import {
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { Chat } from "@/db/schema";
+import { misheardLyricsInstructions } from "./prompts/misheardLyricsInstructions";
+import { musicVideoInstructions } from "./prompts/musicVideoInstructions";
+import { sceneGeneratorInstructions } from "./prompts/sceneGeneratorInstructions";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -147,6 +150,15 @@ export const generationStatusMessage = (status: string): string => {
     case "error": return "Error occurred";
     default: return "";
   }
+};
+
+export type GenerationMode = "music-video-generator" | "misheard-lyrics-generator" | "scene-generator";
+export const getGenerationModePrompt = (mode: GenerationMode, input: string): string => {
+  return {
+    "music-video-generator": musicVideoInstructions,
+    "misheard-lyrics-generator": misheardLyricsInstructions,
+    "scene-generator": sceneGeneratorInstructions
+  }[ mode ](input);
 };
 
 // Util: get the frame as JPEG dataURL from a video URL

@@ -1,7 +1,6 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { auth, signIn, signOut } from "@/auth";
 import { History } from "./history";
 import { SlashIcon } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
@@ -13,14 +12,14 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { FileImageIcon, FileMinusIcon, FilmIcon, LogInIcon } from "lucide-react";
-import { signInWithGoogle } from "@/app/actions";
+import { signInWithGoogle, signOut } from "@/app/actions";
 
 export const Navbar = ({ session }: any) => {
   return (
     <>
-      <div className="bg-background top-0 left-0 w-dvw py-2 px-3 justify-between flex flex-row items-start z-30">
+      <div className="z-50 fixed bg-background top-0 left-0 w-dvw py-2 px-3 justify-between flex flex-row items-start">
         <div className="flex flex-row gap-3 items-center">
-          {/* <History user={session?.user} /> */}
+          <History user={session?.user} />
           <div className="flex flex-row gap-2 items-center">
             {/* <div className="text-zinc-500">
               <FileImageIcon size={16} />
@@ -58,7 +57,7 @@ export const Navbar = ({ session }: any) => {
                 >
                   <button
                     type="submit"
-                    className="w-full text-left px-1 py-0.5 text-red-500"
+                    className="w-full cursor-pointer text-left px-1 py-0.5 text-red-500"
                   >
                     Sign out
                   </button>
@@ -70,13 +69,13 @@ export const Navbar = ({ session }: any) => {
           <>
             {!session?.user && (
               <Button 
-              onClick={() => signInWithGoogle}
+              onClick={signInWithGoogle}
               variant="default" 
               size="sm"
               className="flex items-center gap-2"
               >
                 <LogInIcon size={16} />
-                Log in to save your videos
+                Sign in to create videos
               </Button>
             )}
       

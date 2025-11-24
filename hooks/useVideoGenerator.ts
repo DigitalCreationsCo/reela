@@ -1,4 +1,4 @@
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { AttachmentType, VideoGenerationStatus } from "@/lib/types";
 import { useRef, useCallback } from "react";
 
@@ -27,6 +27,7 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
       durationSeconds: number,
       modelName: string,
       onEvent: OnEvent,
+      mode: string,
       attachments: Array<AttachmentType>,
     ) => {
       const controller = new AbortController();
@@ -51,6 +52,7 @@ export function useVideoGenerator({ fetchFn = fetch }: { fetchFn?: typeof fetch 
             id,
             messages: [message],
             modelName,
+            mode
           }),
         });
         if (!res.ok) {

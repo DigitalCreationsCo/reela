@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Video } from '@/db/schema';
+import { Video } from '@/lib/types';
 
 interface VideoCollageProps {
   videos?: Video[];

@@ -1,6 +1,8 @@
+import "server-only";
+
 import NextAuth, { User, Session } from "next-auth";
-import Google from "next-auth/providers/google"
-import { getUser } from "@/db/queries";
+import Google from "next-auth/providers/google";
+import { createUser, getUser } from "@/db/queries";
 
 interface ExtendedSession extends Session {
   user: User;
@@ -19,6 +21,30 @@ export const {
     }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google") {
+        try {
+          const { email, name, id } = user as any;
+          const { sub } = profile;
+          let existingUser = await getUser(email!);
+
+          if (existingUser.length === 0) {
+            await createUser({
+              id,
+              email: email!,
+              name: name!,
+              username: email!.split("@")[0],
+              password: "", 
+            });
+          }
+          return true;
+        } catch (error) {
+          console.error("Error signing in with Google:", error);
+          return false;
+        }
+      }
+      return true;
+    },
     authorized({ auth, request: { nextUrl } }) {
       return true;
       let isLoggedIn = !!auth?.user;
@@ -49,7 +75,6 @@ export const {
       if (user) {
         token.id = user.id;
       }
-
       return token;
     },
     async session({
@@ -62,7 +87,6 @@ export const {
       if (session.user) {
         session.user.id = token.id as string;
       }
-
       return session;
     },
   },

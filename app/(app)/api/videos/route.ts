@@ -5,9 +5,9 @@ import { getAllVideos } from "@/db/queries";
 export async function GET(request: NextRequest) {
   const session = await auth();
 
-  // if (!session || !session.user) {
-  //   return new NextResponse("Unauthorized", { status: 401 });
-  // }
+  if (!session || !session.user) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
 
   try {
     const videos = await getAllVideos();

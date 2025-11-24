@@ -1,4 +1,3 @@
-import { generateUUID } from "@/lib/utils";
 import { Message } from "ai";
 import { InferSelectModel } from "drizzle-orm";
 import {
@@ -29,6 +28,7 @@ export const chat = pgTable("Chat", {
   userId: uuid("userId")
     .notNull()
     .references(() => user.id),
+  genre: varchar("genre", { length: 64 }),
 });
 
 export type Chat = Omit<InferSelectModel<typeof chat>, "messages"> & {
@@ -39,13 +39,14 @@ export const reservation = pgTable("Reservation", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),
   details: json("details").notNull(),
-  hasCompletedPayment: boolean("hasCompletedPayment").notNull().default(false),
   userId: uuid("userId")
-    .notNull()
-    .references(() => user.id),
+  .notNull()
+  .references(() => user.id),
+  hasCompletedPayment: boolean("hasCompletedPayment").notNull().default(false),
 });
 
 export type Reservation = InferSelectModel<typeof reservation>;
+
 
 export const video = pgTable("Video", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
@@ -68,92 +69,10 @@ export const video = pgTable("Video", {
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   userId: uuid("userId")
     .references(() => user.id), // Foreign key reference to User table, now optional
+  chatId: uuid("chatId"),
   author: varchar("author", { length: 64 }), // Stores the username as a string (denormalized for performance), now optional
   expiresAt: timestamp("expiresAt"), // New field for video expiration
   isTemporary: boolean("isTemporary").notNull().default(false), // New field to mark temporary videos
   parentId: uuid("parentId"), // New field for chaining videos
   chainOrder: integer("chainOrder"), // New field for ordering videos in a chain
 });
-
-export class Video implements InferSelectModel<typeof video> {
-  id: string;
-  uri: string;
-  fileId: string;
-  downloadUri: string | null;
-  metadata: unknown;
-  format: string | null;
-  title: string | null;
-  prompt: string;
-  description: string | null;
-  duration: number | null;
-  fileSize: number | null;
-  author: string | null; // Now optional
-  userId: string | null; // Now optional
-  views: number;
-  thumbnailUri: string;
-  status: "processing" | "ready" | "failed";
-  genre: (typeof genres)[number] | null; // Made optional
-  createdAt: Date;
-  updatedAt: Date;
-  expiresAt: Date | null; // New field
-  isTemporary: boolean; // New field
-  parentId: string | null; // New field for chaining videos
-  chainOrder: number | null; // New field for ordering videos in a chain
-  generatedFileName: string;
-
-  constructor({
-    id,
-    uri,
-    prompt,
-    fileId,
-    generatedFileName,
-    downloadUri = null,
-    metadata = null,
-    format = null,
-    title = null,
-    description = null,
-    duration = null,
-    fileSize = null,
-    author = null, // Now optional
-    userId = null, // Now optional
-    views = 0,
-    thumbnailUri = "",
-    status = "processing",
-    genre = null, // Made optional
-    createdAt = new Date(),
-    updatedAt = new Date(),
-    expiresAt = null, // New field
-    isTemporary = false, // New field
-    parentId = null, // New field
-    chainOrder = null, // New field,
-  }: Partial<Video> & { uri: string; fileId: string; prompt: string }) { // userId and author are now optional in constructor
-    this.id = id ?? generateUUID();
-    this.uri = uri;
-    this.fileId = fileId;
-    this.downloadUri = downloadUri;
-    this.metadata = metadata;
-    this.format = format;
-    this.title = title;
-    this.prompt = prompt!;
-    this.description = description;
-    this.duration = duration;
-    this.fileSize = fileSize;
-    this.author = author;
-    this.userId = userId;
-    this.views = views;
-    this.thumbnailUri = thumbnailUri;
-    this.status = status;
-    this.genre = genre; // Assign new field
-    this.createdAt = createdAt;
-    this.updatedAt = updatedAt;
-    this.expiresAt = expiresAt; // Assign new field
-    this.isTemporary = isTemporary; // Assign new field
-    this.parentId = parentId; // Assign new field
-    this.chainOrder = chainOrder; // Assign new field
-    this.generatedFileName = generatedFileName!;
-  }
-}
-
-export const genres = [
-  "action", "romance", "cartoon", "anime", "education", "scifi", "portrait", "animals", "music", "comedy"
-]

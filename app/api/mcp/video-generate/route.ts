@@ -6,7 +6,7 @@ import { AttachmentType } from "@/lib/types";
 import { inMemoryFileStore, StoredFile } from "@/lib/memory-file-store";
 import { fileToBase64, generateUUID } from "@/lib/utils";
 import { auth } from "@/auth";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 import { insertVideo } from "@/db/queries";
 import { objectStorageManager } from "@/lib/storage";
 

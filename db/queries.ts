@@ -1,11 +1,12 @@
-import "server-only";
 
 import { genSaltSync, hashSync } from "bcrypt-ts";
 import { desc, eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { user, chat, User, reservation, video, Video, genres } from "./schema";
+import { Video, genres } from "@/lib/types"
+
+import { user, chat, User, reservation, video } from "./schema";
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
@@ -26,7 +27,7 @@ export async function createUser(newUser: typeof user.$inferInsert) {
   let salt = genSaltSync(10);
   let hash = hashSync(newUser.password!, salt);
   try {
-    return await db.insert(user).values({ ...user, password: hash } as unknown as typeof user.$inferInsert);
+    return await db.insert(user).values({ ...newUser, password: hash } as unknown as typeof user.$inferInsert);
   } catch (error) {
     console.error("Failed to create user in database");
     throw error;
@@ -37,10 +38,12 @@ export async function saveChat({
   id,
   messages,
   userId,
+  genre,
 }: {
   id: string;
   messages: any;
   userId: string;
+  genre?: string;
 }) {
   try {
     const selectedChats = await db.select().from(chat).where(eq(chat.id, id));
@@ -50,6 +53,8 @@ export async function saveChat({
         .update(chat)
         .set({
           messages: JSON.stringify(messages),
+          genre,
+          userId
         })
         .where(eq(chat.id, id));
     }
@@ -59,6 +64,7 @@ export async function saveChat({
       createdAt: new Date(),
       messages: JSON.stringify(messages),
       userId,
+      genre,
     });
   } catch (error) {
     console.error("Failed to save chat in database");

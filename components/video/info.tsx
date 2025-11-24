@@ -2,7 +2,7 @@ import { LoaderIcon, TrashIcon, DownloadIcon } from "lucide-react";
 import { Session } from "next-auth";
 import { useState, useCallback } from "react";
 import { Button } from "../ui/button";
-import { Video } from "@/db/schema";
+import { Video } from "@/lib/types";
 
 export const VideoInfo = ({ fetchFn, video, session }: { fetchFn: any, video: Video, session: Session | null }) => {
     const [collapsed, setCollapsed] = useState(true);
